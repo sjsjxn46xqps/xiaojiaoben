@@ -8,7 +8,7 @@ print("🔍 YC GUI 多功能脚本开始加载...")
 -- 创建最简单的UI脚本（使用测试代码的结构）
 local function CreateFullUI()
     -- 加载UI库 - 这是必须的第一步！
-    local Library = loadstring(game:HttpGet("https://gitee.com/cmbhbh/ycgui/raw/master/YCmain.lua"))()
+    local Library = loadstring(game:HttpGet("https://raw.githubusercontent.com/sjsjxn46xqps/XA-UI/refs/heads/main/XA%20UI.lua"))()
     
     -- 创建主窗口
     local Main = Library:CreateMainControl("YC 主菜单")
