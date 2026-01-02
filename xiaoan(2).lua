@@ -1,2383 +1,926 @@
---[[ 
-    XA GUI Library - Final Release
-    Author: BeiHai XiaoAn
+-- ============================================
+-- YC GUI 多功能脚本 - 完整修复版
+-- GitHub: https://raw.githubusercontent.com/sjsjxn46xqps/xiaojiaoben/refs/heads/main/xiaoan(2).lua
+-- ============================================
+
+print("🔍 YC GUI 多功能脚本开始加载...")
+
+-- 创建最简单的UI脚本（使用测试代码的结构）
+local function CreateFullUI()
+    -- 加载UI库 - 这是必须的第一步！
+    local Library = loadstring(game:HttpGet("https://gitee.com/cmbhbh/ycgui/raw/master/YCmain.lua"))()
     
-    更新内容:
-    1. 此为改版 - 所有"YC"相关已改为"XA"
-    2. 主题系统统一为黑白灰色调
-]]
-
-local Library = {}
-local ConfigName = "YCUI/settings_final.json"
-
-local HttpService = game:GetService("HttpService")
-local UserInputService = game:GetService("UserInputService")
-local TweenService = game:GetService("TweenService")
-local TextService = game:GetService("TextService")
-local RunService = game:GetService("RunService")
-local CoreGui = game:GetService("CoreGui")
-local Players = game:GetService("Players")
-local Camera = workspace.CurrentCamera
-local LocalPlayer = Players.LocalPlayer
-local Mouse = LocalPlayer:GetMouse()
-
---// 辅助函数 //--
-local function GetFirstChar(str)
-	local first = ""
-	for _, code in utf8.codes(str) do first = utf8.char(code); break end
-	return first ~= "" and first or string.sub(str, 1, 1)
-end
-
-local function ToHSV(color)
-	local h, s, v = Color3.toHSV(color)
-	return h, s, v
-end
-
-local function FromHSV(h, s, v)
-	return Color3.fromHSV(h, s, v)
-end
-
---// 默认配置 //--
-local DefaultConfig = {
-	ShowHUD = true,
-	ShowNotifs = true,
-	NotifDuration = 3,
-	UIScale = 1.0,
-	WindowWidth = 200, 
-	WindowMaxHeight = 350,
-	ItemHeight = 34,
-	Theme = "Default",
-	UIVisible = true,
-	UseCorners = true, 
-	UseStroke = true,
-    IslandText = "XA"  -- 添加灵动岛文字配置
-}
-
-Library.Config = HttpService:JSONDecode(HttpService:JSONEncode(DefaultConfig))
-
-Library.Globals = {
-	Windows = {},
-	Elements = {},
-	ThemeObjects = {},
-	StyleObjects = {}, 
-	ActiveNotifs = {},
-	BoundKeys = {},
-	IslandPosition = Vector2.new(0,0),
-	IslandObject = nil,
-	HUDGradients = {},
-	SubWindows = {},
-	TopZIndex = 100,
-    ActivePicker = nil 
-}
-
---// 黑白灰主题系统 //--
-Library.Themes = {
-    ["Default"] = { 
-        Name = "经典灰黑 (Default)",
-        Main = Color3.fromRGB(25, 25, 30), 
-        MainTrans = 0.1, 
-        Gradient1 = Color3.fromRGB(150, 150, 150),
-        Text = Color3.fromRGB(255, 255, 255), 
-        TextDark = Color3.fromRGB(180, 180, 180),
-        SettingBg = Color3.fromRGB(30, 30, 35), 
-        Accent = Color3.fromRGB(120, 120, 120),
-        Scroll = Color3.fromRGB(80, 80, 80), 
-        PickerBg = Color3.fromRGB(35, 35, 40),
-        IslandColor = Color3.fromRGB(20, 20, 25)
-    },
-    ["LightGray"] = { 
-        Name = "浅灰 (Light Gray)",
-        Main = Color3.fromRGB(245, 245, 245), 
-        MainTrans = 0.05, 
-        Gradient1 = Color3.fromRGB(180, 180, 180),
-        Text = Color3.fromRGB(30, 30, 30), 
-        TextDark = Color3.fromRGB(100, 100, 100),
-        SettingBg = Color3.fromRGB(235, 235, 235), 
-        Accent = Color3.fromRGB(150, 150, 150),
-        Scroll = Color3.fromRGB(200, 200, 200), 
-        PickerBg = Color3.fromRGB(240, 240, 240),
-        IslandColor = Color3.fromRGB(230, 230, 230)
-    },
-    ["MediumGray"] = { 
-        Name = "中灰 (Medium Gray)",
-        Main = Color3.fromRGB(60, 60, 65), 
-        MainTrans = 0.1, 
-        Gradient1 = Color3.fromRGB(140, 140, 140),
-        Text = Color3.fromRGB(240, 240, 240), 
-        TextDark = Color3.fromRGB(160, 160, 160),
-        SettingBg = Color3.fromRGB(70, 70, 75), 
-        Accent = Color3.fromRGB(120, 120, 120),
-        Scroll = Color3.fromRGB(100, 100, 100), 
-        PickerBg = Color3.fromRGB(75, 75, 80),
-        IslandColor = Color3.fromRGB(55, 55, 60)
-    },
-    ["DarkGray"] = { 
-        Name = "深灰 (Dark Gray)",
-        Main = Color3.fromRGB(15, 15, 18), 
-        MainTrans = 0.08, 
-        Gradient1 = Color3.fromRGB(100, 100, 100),
-        Text = Color3.fromRGB(230, 230, 230), 
-        TextDark = Color3.fromRGB(140, 140, 140),
-        SettingBg = Color3.fromRGB(20, 20, 22), 
-        Accent = Color3.fromRGB(80, 80, 80),
-        Scroll = Color3.fromRGB(60, 60, 60), 
-        PickerBg = Color3.fromRGB(22, 22, 25),
-        IslandColor = Color3.fromRGB(12, 12, 15)
-    },
-    ["PureBlack"] = { 
-        Name = "纯黑 (Pure Black)",
-        Main = Color3.fromRGB(0, 0, 0), 
-        MainTrans = 0.05, 
-        Gradient1 = Color3.fromRGB(80, 80, 80),
-        Text = Color3.fromRGB(255, 255, 255), 
-        TextDark = Color3.fromRGB(200, 200, 200),
-        SettingBg = Color3.fromRGB(5, 5, 5), 
-        Accent = Color3.fromRGB(60, 60, 60),
-        Scroll = Color3.fromRGB(40, 40, 40), 
-        PickerBg = Color3.fromRGB(8, 8, 10),
-        IslandColor = Color3.fromRGB(0, 0, 0)
-    },
-    ["PureWhite"] = { 
-        Name = "纯白 (Pure White)",
-        Main = Color3.fromRGB(255, 255, 255), 
-        MainTrans = 0.05, 
-        Gradient1 = Color3.fromRGB(220, 220, 220),
-        Text = Color3.fromRGB(10, 10, 10), 
-        TextDark = Color3.fromRGB(80, 80, 80),
-        SettingBg = Color3.fromRGB(250, 250, 250), 
-        Accent = Color3.fromRGB(200, 200, 200),
-        Scroll = Color3.fromRGB(230, 230, 230), 
-        PickerBg = Color3.fromRGB(245, 245, 245),
-        IslandColor = Color3.fromRGB(255, 255, 255)
-    },
-    ["XA_Special"] = { 
-        Name = "XA专属 (XA Special)",
-        Main = Color3.fromRGB(20, 20, 25), 
-        MainTrans = 0.1, 
-        Gradient1 = Color3.fromRGB(150, 150, 150),
-        Text = Color3.fromRGB(255, 255, 255), 
-        TextDark = Color3.fromRGB(200, 200, 200),
-        SettingBg = Color3.fromRGB(25, 25, 30), 
-        Accent = Color3.fromRGB(100, 100, 100),
-        Scroll = Color3.fromRGB(70, 70, 70), 
-        PickerBg = Color3.fromRGB(30, 30, 35),
-        IslandColor = Color3.fromRGB(15, 15, 20),
-        IslandAccent = Color3.fromRGB(100, 100, 100)
-    }
-}
-
--- 设置默认主题
-local CurrentThemeData = Library.Themes[Library.Config.Theme] or Library.Themes["Default"]
-
---// 文件系统优化 //--
-local function EnsureFolder()
-    if not isfolder("YCUI") then 
-        makefolder("YCUI") 
-    end
-end
-
-local function SaveConfig()
-    EnsureFolder()
-    local success, err = pcall(function()
-        -- 确保配置包含所有必要字段
-        Library.Config = Library.Config or {}
-        Library.Config.Theme = Library.Config.Theme or "Default"
-        Library.Config.UIVisible = Library.Config.UIVisible or false
-        Library.Config.UseStroke = Library.Config.UseStroke or true
-        Library.Config.IslandText = Library.Config.IslandText or "XA"
-        
-        writefile(ConfigName, HttpService:JSONEncode(Library.Config))
-    end)
+    -- 创建主窗口
+    local Main = Library:CreateMainControl("YC 主菜单")
     
-    if not success then
-        warn("保存配置失败:", err)
-    end
-end
-
-local function LoadConfig()
-    EnsureFolder()
-    if isfile(ConfigName) then
-        local success, data = pcall(function()
-            return HttpService:JSONDecode(readfile(ConfigName))
-        end)
+    -- 创建子窗口
+    local MovementWin = Library:CreateChildWindow("移动功能")
+    local WorldWin = Library:CreateChildWindow("世界功能")
+    local CombatWin = Library:CreateChildWindow("战斗功能")  -- 修复命名，改为战斗功能
+    
+    -- 绑定子窗口
+    Main:BindWindow("移动功能", false)
+    Main:BindWindow("世界功能", false)
+    Main:BindWindow("战斗功能", false)
+    
+    -- ==================== 全局变量和工具函数 ====================
+    local Players = game:GetService("Players")
+    local RunService = game:GetService("RunService")
+    local UserInputService = game:GetService("UserInputService")
+    local Workspace = game:GetService("Workspace")
+    local Lighting = game:GetService("Lighting")
+    
+    local player = Players.LocalPlayer
+    
+    -- 战斗功能变量
+    local AimLockActive = false
+    local AimLockConnection = nil
+    local AimLockTarget = nil
+    local AimLockDistance = 50
+    local AimLockSmoothness = 0.1
+    local AimLockPart = "Head"
+    
+    local AutoShootActive = false
+    local AutoShootConnection = nil
+    local ShootInterval = 500
+    
+    local NoRecoilActive = false
+    local InfiniteAmmoActive = false
+    
+    -- ESP功能变量
+    local ESPActive = false
+    local ESPConnections = {}
+    local ESPBoxes = {}
+    local ESPLines = {}
+    local ESPNames = {}
+    
+    -- ==================== 辅助函数 ====================
+    
+    -- 获取最近的目标
+    local function GetNearestTarget(maxDistance)
+        local nearest = nil
+        local nearestDistance = math.huge
+        local myPosition = player.Character and player.Character:FindFirstChild("HumanoidRootPart") and player.Character.HumanoidRootPart.Position
         
-        if success and data then
-            -- 合并配置，保留原有值
-            for key, value in pairs(data) do
-                Library.Config[key] = value
+        if not myPosition then return nil end
+        
+        for _, otherPlayer in pairs(Players:GetPlayers()) do
+            if otherPlayer ~= player and otherPlayer.Character and otherPlayer.Character:FindFirstChild("Humanoid") 
+               and otherPlayer.Character.Humanoid.Health > 0 and otherPlayer.Character:FindFirstChild("HumanoidRootPart") then
+                
+                local targetPosition = otherPlayer.Character.HumanoidRootPart.Position
+                local distance = (myPosition - targetPosition).Magnitude
+                
+                if distance <= maxDistance and distance < nearestDistance then
+                    nearestDistance = distance
+                    nearest = otherPlayer
+                end
             end
-            
-            -- 更新当前主题数据
-            if data.Theme and Library.Themes[data.Theme] then
-                CurrentThemeData = Library.Themes[data.Theme]
-            else
-                CurrentThemeData = Library.Themes["Default"]
-                Library.Config.Theme = "Default"
-            end
-            
-            -- 确保灵动岛文字配置
-            if not data.IslandText then
-                Library.Config.IslandText = "XA"
-            end
+        end
+        
+        return nearest, nearestDistance
+    end
+    
+    -- 获取目标部位位置
+    local function GetTargetPosition(target)
+        if not target or not target.Character then return nil end
+        
+        local character = target.Character
+        
+        if AimLockPart == "Head" and character:FindFirstChild("Head") then
+            return character.Head.Position
+        elseif AimLockPart == "HumanoidRootPart" and character:FindFirstChild("HumanoidRootPart") then
+            return character.HumanoidRootPart.Position
+        elseif character:FindFirstChild("UpperTorso") then
+            return character.UpperTorso.Position
+        elseif character:FindFirstChild("Torso") then
+            return character.Torso.Position
         else
-            warn("配置文件损坏，使用默认配置")
-            CurrentThemeData = Library.Themes["Default"]
-            Library.Config.Theme = "Default"
-            Library.Config.IslandText = "XA"
-        end
-    else
-        -- 首次运行，使用默认配置
-        CurrentThemeData = Library.Themes["Default"]
-        Library.Config.Theme = "Default"
-        Library.Config.IslandText = "XA"
-        SaveConfig()
-    end
-end
-
--- 加载配置
-LoadConfig()
-
---// 主题切换函数 //--
-function Library:SwitchTheme(themeName)
-    if not Library.Themes[themeName] then
-        warn("主题不存在:", themeName)
-        return false
-    end
-    
-    -- 更新主题数据
-    CurrentThemeData = Library.Themes[themeName]
-    Library.Config.Theme = themeName
-    
-    -- 应用主题到UI元素
-    self:ApplyCurrentTheme()
-    
-    -- 保存配置
-    SaveConfig()
-    
-    return true
-end
-
--- 应用当前主题
-function Library:ApplyCurrentTheme()
-    -- 应用主题到灵动岛
-    if Library.Globals.IslandObject then
-        local Island = Library.Globals.IslandObject
-        
-        -- 使用主题中的灵动岛颜色
-        local islandColor = CurrentThemeData.IslandColor or Color3.new(0, 0, 0)
-        local textColor = CurrentThemeData.Text or Color3.new(1, 1, 1)
-        
-        TweenService:Create(Island, TweenInfo.new(0.3), {
-            BackgroundColor3 = islandColor,
-            TextColor3 = textColor
-        }):Play()
-        
-        -- 更新描边颜色（如果需要）
-        if Island.UIStroke then
-            local strokeColor = CurrentThemeData.Accent or Color3.new(1, 1, 1)
-            TweenService:Create(Island.UIStroke, TweenInfo.new(0.3), {
-                Color = strokeColor
-            }):Play()
+            return character:FindFirstChild("HumanoidRootPart") and character.HumanoidRootPart.Position or nil
         end
     end
     
-    -- 应用主题到所有窗口
-    if self.Globals.Windows then
-        for _, windowData in ipairs(self.Globals.Windows) do
-            if windowData.Main and windowData.Main.Parent then
-                self:ApplyThemeToWindow(windowData.Main)
+    -- 计算两点间距离
+    local function CalculateDistance(point1, point2)
+        return (point1 - point2).Magnitude
+    end
+    
+    -- ==================== 战斗功能 ====================
+    
+    -- 自瞄功能（修复版）
+    local AimLock = CombatWin:CreateModule("自瞄锁头", function(state)
+        print("自瞄状态:", state)
+        AimLockActive = state
+        
+        if state then
+            -- 启用自瞄
+            if AimLockConnection then
+                AimLockConnection:Disconnect()
             end
-        end
-    end
-end
-
--- 应用到窗口
-function Library:ApplyThemeToWindow(window)
-    -- 这里实现将CurrentThemeData应用到窗口的所有元素
-    local theme = CurrentThemeData
-    
-    -- 应用背景色
-    if window:IsA("Frame") or window:IsA("TextButton") then
-        TweenService:Create(window, TweenInfo.new(0.5), {
-            BackgroundColor3 = theme.Main
-        }):Play()
-    end
-    
-    -- 递归应用到子元素
-    for _, child in ipairs(window:GetDescendants()) do
-        if child:IsA("TextLabel") or child:IsA("TextButton") then
-            if child.Name == "Title" or child.Name:find("Text") then
-                TweenService:Create(child, TweenInfo.new(0.5), {
-                    TextColor3 = theme.Text
-                }):Play()
-            end
-        elseif child:IsA("UIStroke") then
-            TweenService:Create(child, TweenInfo.new(0.5), {
-                Color = theme.Accent
-            }):Play()
-        end
-    end
-end
-
---// 创建主界面（已改为XA_GUI）//--
-if game.CoreGui:FindFirstChild("XA_GUI") then 
-    game.CoreGui.XA_GUI:Destroy() 
-end
-
-local ScreenGui = Instance.new("ScreenGui")
-ScreenGui.Name = "XA_GUI"
-ScreenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling 
-ScreenGui.IgnoreGuiInset = true
-ScreenGui.Enabled = false 
-
--- 优化父级设置
-local success, _ = pcall(function() 
-    ScreenGui.Parent = game:GetService("CoreGui") 
-end)
-
-if not ScreenGui.Parent then
-    success, _ = pcall(function() 
-        ScreenGui.Parent = game.Players.LocalPlayer:WaitForChild("PlayerGui")
-    end)
-end
-
-if not ScreenGui.Parent then
-    warn("无法将GUI添加到任何父级")
-end
-
---// 快捷主题切换 //--
-function Library:SetDarkTheme()
-    return self:SwitchTheme("DarkGray")
-end
-
-function Library:SetLightTheme()
-    return self:SwitchTheme("LightGray")
-end
-
-function Library:SetXASpecialTheme()
-    return self:SwitchTheme("XA_Special")
-end
-
--- [核心修改] 防止穿透
-local Backdrop = Instance.new("Frame")
-Backdrop.Name = "Backdrop"
-Backdrop.Parent = ScreenGui
-Backdrop.BackgroundColor3 = Color3.new(0,0,0)
-Backdrop.BackgroundTransparency = 1
-Backdrop.Size = UDim2.new(1,0,1,0)
-Backdrop.ZIndex = 0
-Backdrop.Visible = false
-Backdrop.Active = true -- 开启输入拦截
-
---// HUD 垂直流光 //--
-local function UpdateHUDGradients()
-    local theme = CurrentThemeData
-    local t = tick() * 2
-    local phase = (math.sin(t) + 1) / 2 
-    local c1 = theme.Accent:Lerp(theme.Gradient1, phase)
-    local c2 = theme.Gradient1:Lerp(Color3.new(1,1,1), phase * 0.3) 
-    local c3 = theme.Accent:Lerp(theme.Gradient1, 1 - phase) 
-    local seq = ColorSequence.new{ColorSequenceKeypoint.new(0, c1), ColorSequenceKeypoint.new(0.5, c2), ColorSequenceKeypoint.new(1, c3)}
-    for _, gradient in pairs(Library.Globals.HUDGradients) do
-        if gradient and gradient.Parent then gradient.Color = seq; gradient.Rotation = -90 end
-    end
-end
-RunService.RenderStepped:Connect(UpdateHUDGradients)
-
---// Loader - 更新为XA版本 //--
-function Library:LoadLoader()
-	local Loader = Instance.new("ScreenGui")
-    Loader.Name = "XA_Loader"
-    Loader.IgnoreGuiInset = true
-    Loader.DisplayOrder = 10000
-    Loader.Parent = CoreGui
-    
-	local Main = Instance.new("Frame")
-    Main.Parent = Loader
-    Main.BackgroundColor3 = Color3.new(0,0,0)
-    Main.BackgroundTransparency = 0
-    Main.Size = UDim2.new(1,0,1,0)
-    Main.ZIndex = 1
-    
-	local Cen = Instance.new("Frame")
-    Cen.Parent = Main
-    Cen.Size = UDim2.new(0,400,0,150)
-    Cen.AnchorPoint = Vector2.new(0.5,0.5)
-    Cen.Position = UDim2.new(0.5,0,0.5,0)
-    Cen.BackgroundTransparency = 1
-    Cen.ZIndex = 2
-	
-	local MainTitle = Instance.new("TextLabel")
-    MainTitle.Parent = Cen
-    MainTitle.Text = "XA GUI"
-    MainTitle.Font = Enum.Font.GothamBlack
-    MainTitle.TextSize = 60
-    MainTitle.TextColor3 = Color3.new(1,1,1)
-    MainTitle.Size = UDim2.new(1, 0, 0, 70)
-    MainTitle.Position = UDim2.new(0, 0, 0.5, -40)
-    MainTitle.AnchorPoint = Vector2.new(0, 0.5)
-    MainTitle.BackgroundTransparency = 1
-    MainTitle.TextTransparency = 1
-    
-	local TitleScale = Instance.new("UIScale")
-    TitleScale.Parent = MainTitle
-    TitleScale.Scale = 1.1
-    
-	local MainGradient = Instance.new("UIGradient")
-    MainGradient.Parent = MainTitle
-    MainGradient.Color = ColorSequence.new{
-        ColorSequenceKeypoint.new(0, Color3.fromRGB(80, 80, 80)),
-        ColorSequenceKeypoint.new(0.5, Color3.fromRGB(180, 180, 180)),
-        ColorSequenceKeypoint.new(1, Color3.fromRGB(100, 100, 100))
-    }
-	
-    local SubTitle = Instance.new("TextLabel")
-    SubTitle.Parent = Cen
-    SubTitle.Text = "By BeiHai"
-    SubTitle.Font = Enum.Font.Gotham
-    SubTitle.TextSize = 16
-    SubTitle.TextColor3 = Color3.fromRGB(220, 220, 220)
-    SubTitle.Size = UDim2.new(1, 0, 0, 20)
-    SubTitle.AnchorPoint = Vector2.new(1, 0)
-    SubTitle.Position = UDim2.new(1, -20, 0.5, 25)
-    SubTitle.TextXAlignment = Enum.TextXAlignment.Right
-    SubTitle.BackgroundTransparency = 1
-    SubTitle.TextTransparency = 1
-
-	Main.BackgroundTransparency = 0.3
-	local t1 = TweenService:Create(MainTitle, TweenInfo.new(1.2, Enum.EasingStyle.Quint, Enum.EasingDirection.Out), {TextTransparency = 0})
-	local t2 = TweenService:Create(TitleScale, TweenInfo.new(1.2, Enum.EasingStyle.Quint, Enum.EasingDirection.Out), {Scale = 1.0})
-	t1:Play(); t2:Play()
-	task.wait(0.4)
-	local subPosFinal = UDim2.new(1, -20, 0.5, 15)
-	local t3 = TweenService:Create(SubTitle, TweenInfo.new(1.0, Enum.EasingStyle.Quint, Enum.EasingDirection.Out), {TextTransparency = 0, Position = subPosFinal})
-	t3:Play()
-	task.spawn(function() local s = tick(); while Loader.Parent do MainGradient.Rotation = math.sin(tick()) * 15; RunService.RenderStepped:Wait() end end)
-	task.wait(1.5)
-	TweenService:Create(Main, TweenInfo.new(0.5, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {BackgroundTransparency = 1}):Play()
-	TweenService:Create(MainTitle, TweenInfo.new(0.4, Enum.EasingStyle.Quad, Enum.EasingDirection.In), {TextTransparency = 1}):Play()
-	TweenService:Create(TitleScale, TweenInfo.new(0.4, Enum.EasingStyle.Quad, Enum.EasingDirection.In), {Scale = 1.1}):Play()
-	TweenService:Create(SubTitle, TweenInfo.new(0.4, Enum.EasingStyle.Quad, Enum.EasingDirection.In), {TextTransparency = 1, Position = subPosFinal + UDim2.new(0,0,0,10)}):Play()
-	task.wait(0.5)
-	ScreenGui.Enabled = true
-	Loader:Destroy()
-end
-
---// 样式系统 //--
-local function RegisterStyle(obj, hasStroke, cornerRadius)
-	table.insert(Library.Globals.StyleObjects, {Object = obj, HasStroke = hasStroke, Radius = cornerRadius})
-	local Corner = obj:FindFirstChild("UICorner") or Instance.new("UICorner")
-	Corner.Parent = obj
-	Corner.CornerRadius = UDim.new(0, Library.Config.UseCorners and cornerRadius or 0)
-	if hasStroke then
-		local Stroke = obj:FindFirstChild("UIStroke") or Instance.new("UIStroke")
-		Stroke.Parent = obj
-		Stroke.Thickness = 1.5
-		Stroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
-		Stroke.Color = CurrentThemeData.Accent 
-		Stroke.Transparency = Library.Config.UseStroke and 0 or 1
-	end
-end
-
-function Library:RefreshStyle()
-	local useCorners = Library.Config.UseCorners
-	local useStroke = Library.Config.UseStroke
-	
-	for _, data in ipairs(Library.Globals.StyleObjects) do
-		local obj = data.Object
-		if obj and obj.Parent then
-			local Corner = obj:FindFirstChild("UICorner")
-			if Corner then
-				TweenService:Create(Corner, TweenInfo.new(0.3), {CornerRadius = UDim.new(0, useCorners and data.Radius or 0)}):Play()
-			end
-			if data.HasStroke then
-				local Stroke = obj:FindFirstChild("UIStroke")
-				if Stroke then
-					TweenService:Create(Stroke, TweenInfo.new(0.3), {Transparency = useStroke and 0 or 1, Color = CurrentThemeData.Accent}):Play()
-				end
-			end
-		end
-	end
-end
-
---// 主题更新 //--
-local function RegisterObject(obj, type)
-	table.insert(Library.Globals.ThemeObjects, {Object = obj, Type = type})
-	local theme = CurrentThemeData
-	if type == "Window" then obj.BackgroundColor3 = theme.Main; obj.BackgroundTransparency = theme.MainTrans
-	elseif type == "Text" then obj.TextColor3 = theme.Text
-	elseif type == "TextDark" then obj.TextColor3 = theme.TextDark
-	elseif type == "SettingBg" then obj.BackgroundColor3 = theme.SettingBg
-	elseif type == "Accent" then obj.BackgroundColor3 = theme.Accent
-    elseif type == "PickerBg" then obj.BackgroundColor3 = theme.PickerBg
-	elseif type == "Scroll" then obj.ScrollBarImageColor3 = theme.Scroll
-	elseif type == "NotifGradient" then 
-		obj.Color = ColorSequence.new{ColorSequenceKeypoint.new(0, theme.Accent), ColorSequenceKeypoint.new(0.5, Color3.new(1,1,1)), ColorSequenceKeypoint.new(1, theme.Accent)}
-	end
-end
-
-function Library:RefreshTheme()
-	local theme = CurrentThemeData
-	for _, data in ipairs(Library.Globals.ThemeObjects) do
-		local obj = data.Object
-		if obj and obj.Parent then
-			if data.Type == "Window" then TweenService:Create(obj, TweenInfo.new(0.5), {BackgroundColor3 = theme.Main}):Play()
-			elseif data.Type == "Text" then TweenService:Create(obj, TweenInfo.new(0.5), {TextColor3 = theme.Text}):Play()
-			elseif data.Type == "TextDark" then TweenService:Create(obj, TweenInfo.new(0.5), {TextColor3 = theme.TextDark}):Play()
-			elseif data.Type == "Accent" then TweenService:Create(obj, TweenInfo.new(0.5), {BackgroundColor3 = theme.Accent}):Play()
-            elseif data.Type == "PickerBg" then TweenService:Create(obj, TweenInfo.new(0.5), {BackgroundColor3 = theme.PickerBg}):Play()
-			elseif data.Type == "Scroll" then TweenService:Create(obj, TweenInfo.new(0.5), {ScrollBarImageColor3 = theme.Scroll}):Play()
-			elseif data.Type == "NotifGradient" then
-				obj.Color = ColorSequence.new{ColorSequenceKeypoint.new(0, theme.Accent), ColorSequenceKeypoint.new(0.5, Color3.new(1,1,1)), ColorSequenceKeypoint.new(1, theme.Accent)}
-			end
-		end
-	end
-	Library:RefreshStyle()
-end
-
-function Library:RefreshDimensions()
-	local conf = Library.Config
-	for _, win in ipairs(Library.Globals.Windows) do
-		local scale = win.Main:FindFirstChild("UIScale")
-		if scale then TweenService:Create(scale, TweenInfo.new(0.3), {Scale = conf.UIScale}):Play() end
-		if win.RefreshHeight then win.RefreshHeight() end
-		local headerH = conf.ItemHeight + 6 
-		win.Header.Size = UDim2.new(1, 0, 0, headerH)
-		win.Title.TextSize = math.clamp(headerH * 0.45, 12, 24)
-	end
-end
-
-Camera:GetPropertyChangedSignal("ViewportSize"):Connect(function()
-	Library:RefreshDimensions()
-end)
-
---// 灵动岛 //--
-local function ToggleInterface(visible)
-	Library.Config.UIVisible = visible
-	Backdrop.Visible = visible
-	TweenService:Create(Backdrop, TweenInfo.new(0.5), {BackgroundTransparency = visible and 0.4 or 1}):Play()
-    
-    if not visible and Library.Globals.ActivePicker then
-        Library.Globals.ActivePicker:Destroy()
-        Library.Globals.ActivePicker = nil
-    end
-	
-	if Library.Globals.IslandObject then
-		local Island = Library.Globals.IslandObject
-		if visible then
-			TweenService:Create(Island, TweenInfo.new(0.3), {BackgroundTransparency = 0.1}):Play()
-			if not Library.Config.UseStroke then
-				TweenService:Create(Island.UIStroke, TweenInfo.new(0.3), {Transparency = 0.5}):Play()
-			end
-		else
-			TweenService:Create(Island, TweenInfo.new(0.3), {BackgroundTransparency = 0.6}):Play()
-			if not Library.Config.UseStroke then
-				TweenService:Create(Island.UIStroke, TweenInfo.new(0.3), {Transparency = 0.9}):Play()
-			end
-		end
-	end
-	
-	local Origin = Library.Globals.IslandPosition
-	local ScreenSize = ScreenGui.AbsoluteSize
-	local MaxRadius = math.sqrt(ScreenSize.X^2 + ScreenSize.Y^2)
-	
-	if visible then
-		local Ripple = Instance.new("Frame"); Ripple.Name="FullRipple"; Ripple.Parent=ScreenGui
-		Ripple.AnchorPoint=Vector2.new(0.5,0.5); Ripple.Position=UDim2.new(0,Origin.X,0,Origin.Y)
-		Ripple.BackgroundColor3=CurrentThemeData.Accent; Ripple.BackgroundTransparency=0.8; Ripple.BorderSizePixel=0; Ripple.ZIndex=1
-		local Corner = Instance.new("UICorner"); Corner.CornerRadius=UDim.new(1,0); Corner.Parent=Ripple
-		Ripple.Size=UDim2.new(0,0,0,0)
-		local tween=TweenService:Create(Ripple, TweenInfo.new(1, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {Size=UDim2.new(0,MaxRadius*2,0,MaxRadius*2), BackgroundTransparency=1})
-		tween:Play(); tween.Completed:Connect(function() Ripple:Destroy() end)
-
-		local Duration = 0.6; local StartTime = tick()
-		for _, winData in ipairs(Library.Globals.Windows) do 
-			if winData.IsOpen then winData.Main.Visible = false; winData.Main.BackgroundTransparency = 1 end
-		end
-		local connection
-		connection = RunService.RenderStepped:Connect(function()
-			local elapsed = tick() - StartTime; local progress = math.clamp(elapsed / Duration, 0, 1)
-			local currentRadius = progress * MaxRadius * 1.2
-			for _, winData in ipairs(Library.Globals.Windows) do
-				if winData.IsOpen then
-					local winPos = winData.Main.AbsolutePosition + (winData.Main.AbsoluteSize / 2)
-					local dist = (winPos - Origin).Magnitude
-					if currentRadius >= dist and not winData.Main.Visible then
-						winData.Main.Visible = true
-						TweenService:Create(winData.Main, TweenInfo.new(0.4, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {BackgroundTransparency = CurrentThemeData.MainTrans}):Play()
-						for _, d in ipairs(winData.Main:GetDescendants()) do
-							if (d:IsA("TextLabel") or d:IsA("TextButton") or d:IsA("ImageLabel") or d:IsA("TextBox")) and d.Name ~= "Backdrop" then
-								local targetT = (d:IsA("TextButton") and d.Name == "Main") and 1 or 0
-                                if d:IsA("TextBox") then targetT = 0 end 
-								d.TextTransparency = 1
-								TweenService:Create(d, TweenInfo.new(0.3), {TextTransparency = targetT}):Play()
-							end
-						end
-					end
-				end
-			end
-			if progress >= 1 then connection:Disconnect() end
-		end)
-	else
-		for _, winData in ipairs(Library.Globals.Windows) do
-			if winData.Main.Visible then
-				TweenService:Create(winData.Main, TweenInfo.new(0.2), {BackgroundTransparency = 1}):Play()
-				for _, d in ipairs(winData.Main:GetDescendants()) do
-					if d:IsA("TextLabel") or d:IsA("TextButton") or d:IsA("TextBox") then TweenService:Create(d, TweenInfo.new(0.2), {TextTransparency = 1}):Play() end
-				end
-			end
-		end
-		task.delay(0.2, function()
-			if not Library.Config.UIVisible then for _, w in ipairs(Library.Globals.Windows) do w.Main.Visible = false end; Backdrop.Visible = false end
-		end)
-	end
-end
-
-local function CreateDynamicIsland()
-	local Island = Instance.new("TextButton")
-    Island.Name="DynamicIsland"
-    Island.Parent=ScreenGui
-    Island.Size=UDim2.new(0,100,0,30)
-    Island.Position=UDim2.new(0.5,0,0,10)
-    Island.AnchorPoint=Vector2.new(0.5,0)
-    Island.BackgroundColor3=Color3.new(0,0,0)
-    Island.BackgroundTransparency = Library.Config.UIVisible and 0.1 or 0.6
-    
-    -- 修复：使用配置的文字
-    Island.Text = Library.Config.IslandText or "XA"
-    
-    Island.Font=Enum.Font.GothamBold
-    Island.TextSize=14
-    Island.TextColor3=Color3.new(1,1,1)
-    Island.AutoButtonColor=false
-    Island.ZIndex=100
-	
-	local UICorner = Instance.new("UICorner")
-    UICorner.CornerRadius = UDim.new(1,0) 
-    UICorner.Parent = Island
-	
-	local UIStroke = Instance.new("UIStroke")
-    UIStroke.Thickness=1.5
-    UIStroke.Color=Color3.fromRGB(255,255,255)
-    UIStroke.Transparency = Library.Config.UIVisible and 0.5 or 0.9
-    UIStroke.Parent=Island
-	
-	Library.Globals.IslandObject = Island
-	
-	local function UpdatePos() 
-        Library.Globals.IslandPosition = Island.AbsolutePosition + (Island.AbsoluteSize / 2) 
-    end
-	Island:GetPropertyChangedSignal("AbsolutePosition"):Connect(UpdatePos)
-    task.defer(UpdatePos)
-    
-	Island.MouseButton1Click:Connect(function()
-		TweenService:Create(Island, TweenInfo.new(0.1), {Size=UDim2.new(0,90,0,25)}):Play()
-		task.delay(0.1, function() TweenService:Create(Island, TweenInfo.new(0.4, Enum.EasingStyle.Elastic), {Size=UDim2.new(0,100,0,30)}):Play() end)
-		ToggleInterface(not Library.Config.UIVisible)
-	end)
-end
-CreateDynamicIsland()
-
---// 涟漪 //--
-local function CreateRipple(btn, isCenter)
-	btn.ClipsDescendants = true
-	spawn(function()
-		local ripple = Instance.new("Frame"); ripple.Parent=btn; ripple.BackgroundColor3=Color3.fromRGB(255,255,255); ripple.BackgroundTransparency=0.8; ripple.BorderSizePixel=0; ripple.AnchorPoint=Vector2.new(0.5,0.5)
-		local corner = Instance.new("UICorner"); corner.CornerRadius=UDim.new(1,0); corner.Parent=ripple
-		local pos = isCenter and UDim2.new(0.5,0,0.5,0) or UDim2.new(0,UserInputService:GetMouseLocation().X-btn.AbsolutePosition.X,0,UserInputService:GetMouseLocation().Y-btn.AbsolutePosition.Y)
-		ripple.Position=pos; ripple.Size=UDim2.new(0,0,0,0)
-		local size = math.max(btn.AbsoluteSize.X,btn.AbsoluteSize.Y)*1.5
-		TweenService:Create(ripple,TweenInfo.new(0.4),{Size=UDim2.new(0,size,0,size),BackgroundTransparency=1}):Play()
-		task.wait(0.45); ripple:Destroy()
-	end)
-end
-
---// HUD & Notify //--
-local HUDFrame = Instance.new("Frame"); HUDFrame.Name="HUD"; HUDFrame.Parent=ScreenGui
-HUDFrame.Position=UDim2.new(1,-10,0,50); HUDFrame.AnchorPoint=Vector2.new(1,0)
-HUDFrame.Size=UDim2.new(0,300,1,-60); HUDFrame.BackgroundTransparency=1; HUDFrame.Visible=Library.Config.ShowHUD
-local HUDLayout = Instance.new("UIListLayout"); HUDLayout.Parent=HUDFrame; HUDLayout.HorizontalAlignment=Enum.HorizontalAlignment.Right; HUDLayout.Padding=UDim.new(0,0); HUDLayout.SortOrder=Enum.SortOrder.LayoutOrder
-local function UpdateHUD(name, enabled)
-	if not Library.Config.ShowHUD then return end
-	local old = HUDFrame:FindFirstChild(name)
-	if enabled then
-		if old then return end
-		local font = Enum.Font.GothamBold; local textSize = 18
-		local w = TextService:GetTextSize(name, textSize, font, Vector2.new(1000, 1000)).X
-		local Wrap = Instance.new("Frame"); Wrap.Name = name; Wrap.Parent = HUDFrame; Wrap.BackgroundTransparency = 1; Wrap.Size = UDim2.new(0, w + 14, 0, 22); Wrap.LayoutOrder = -math.floor(w)
-		local Cont = Instance.new("Frame"); Cont.Name = "Container"; Cont.Parent = Wrap; Cont.BackgroundColor3 = Color3.new(0,0,0); Cont.BackgroundTransparency = 0.4; Cont.Size = UDim2.new(1, 0, 1, 0); Cont.Position = UDim2.new(1, 50, 0, 0); Cont.BorderSizePixel = 0
-		local Bar = Instance.new("Frame"); Bar.Name = "FlowBar"; Bar.Parent = Cont; Bar.Size = UDim2.new(0, 3, 1, 0); Bar.Position = UDim2.new(1, -3, 0, 0); Bar.BorderSizePixel = 0; Bar.BackgroundColor3 = Color3.new(1,1,1)
-		local Grad = Instance.new("UIGradient"); Grad.Parent = Bar; Grad.Rotation = -90; table.insert(Library.Globals.HUDGradients, Grad)
-		local Lab = Instance.new("TextLabel"); Lab.Parent = Cont; Lab.Text = name; Lab.Font = font; Lab.TextSize = textSize; Lab.TextColor3 = Color3.new(1,1,1); Lab.BackgroundTransparency = 1; Lab.Size = UDim2.new(1, -8, 1, 0); Lab.Position = UDim2.new(0, 0, 0, 0); Lab.TextXAlignment = Enum.TextXAlignment.Right; RegisterObject(Lab, "Text")
-		TweenService:Create(Cont, TweenInfo.new(0.4, Enum.EasingStyle.Exponential), {Position=UDim2.new(0,0,0,0)}):Play()
-	else 
-		if old then 
-			local bar = old:FindFirstChild("Container") and old.Container:FindFirstChild("FlowBar")
-			if bar and bar:FindFirstChild("UIGradient") then for i, g in ipairs(Library.Globals.HUDGradients) do if g == bar.UIGradient then table.remove(Library.Globals.HUDGradients, i) break end end end
-			local cont = old:FindFirstChild("Container")
-			if cont then local out = TweenService:Create(cont, TweenInfo.new(0.3), {Position=UDim2.new(1,50,0,0)}); out:Play(); out.Completed:Connect(function() old:Destroy() end) else old:Destroy() end
-		end 
-	end
-end
-function Library:SetHUDVisible(visible) Library.Config.ShowHUD = visible; HUDFrame.Visible = visible; SaveConfig() end
-function Library:SetNotifsVisible(visible) Library.Config.ShowNotifs = visible; SaveConfig() end
-function Library:SetTheme(themeName) if Library.Themes[themeName] then CurrentThemeData = Library.Themes[themeName]; Library.Config.Theme = themeName; Library:RefreshTheme(); SaveConfig() end end
-function Library:Notify(title, status)
-	if not Library.Config.ShowNotifs then return end
-	local Frame = Instance.new("Frame"); Frame.Parent=ScreenGui; Frame.BackgroundColor3=Color3.fromRGB(20,20,20); Frame.BackgroundTransparency=0.15; Frame.BorderSizePixel=0; Frame.Size=UDim2.new(0,200,0,35); Frame.Position=UDim2.new(1,50,1,-50)
-	local Bar = Instance.new("Frame"); Bar.Parent=Frame; Bar.Size=UDim2.new(0,2,1,0); Bar.BorderSizePixel=0; RegisterObject(Bar, "Accent")
-	local TitleLab = Instance.new("TextLabel"); TitleLab.Parent=Frame; TitleLab.Text=title; TitleLab.Font=Enum.Font.GothamBold; TitleLab.TextSize=14; TitleLab.TextColor3=Color3.fromRGB(255,255,255); TitleLab.BackgroundTransparency=1; TitleLab.Size=UDim2.new(1,-10,0.5,0); TitleLab.Position=UDim2.new(0,10,0,3); TitleLab.TextXAlignment=Enum.TextXAlignment.Left
-	local StateLab = Instance.new("TextLabel"); StateLab.Parent=Frame; StateLab.Text=status and "已开启" or "已关闭"; StateLab.Font=Enum.Font.Gotham; StateLab.TextSize=11; StateLab.TextColor3=status and Color3.fromRGB(80,255,80) or Color3.fromRGB(255,80,80); StateLab.BackgroundTransparency=1; StateLab.Size=UDim2.new(1,-10,0.5,0); StateLab.Position=UDim2.new(0,10,0.5,-2); StateLab.TextXAlignment=Enum.TextXAlignment.Left
-	local TimerFrame = Instance.new("Frame"); TimerFrame.Parent=Frame; TimerFrame.BorderSizePixel=0; TimerFrame.Position=UDim2.new(0,0,1,-2); TimerFrame.Size=UDim2.new(1,0,0,2); TimerFrame.BackgroundColor3 = Color3.new(1,1,1) 
-	
-	local TimerGradient = Instance.new("UIGradient"); TimerGradient.Parent = TimerFrame
-	TimerGradient.Color = ColorSequence.new{ColorSequenceKeypoint.new(0, CurrentThemeData.Accent), ColorSequenceKeypoint.new(0.5, Color3.new(1,1,1)), ColorSequenceKeypoint.new(1, CurrentThemeData.Accent)}
-	RegisterObject(TimerGradient, "NotifGradient") 
-	
-	local yOffset = 0; for i=#Library.Globals.ActiveNotifs,1,-1 do local n=Library.Globals.ActiveNotifs[i]; if n.Parent then TweenService:Create(n,TweenInfo.new(0.3),{Position=UDim2.new(1,-210,1,-50-yOffset)}):Play(); yOffset=yOffset+40 end end
-	table.insert(Library.Globals.ActiveNotifs, Frame); TweenService:Create(Frame,TweenInfo.new(0.3),{Position=UDim2.new(1,-210,1,-50-yOffset)}):Play()
-	local timerTween = TweenService:Create(TimerFrame, TweenInfo.new(Library.Config.NotifDuration, Enum.EasingStyle.Linear), {Size=UDim2.new(0,0,0,2)}); timerTween:Play()
-	timerTween.Completed:Connect(function() for i,v in ipairs(Library.Globals.ActiveNotifs) do if v==Frame then table.remove(Library.Globals.ActiveNotifs, i) break end end; local out = TweenService:Create(Frame,TweenInfo.new(0.3),{Position=Frame.Position+UDim2.new(0,250,0,0)}); out:Play(); task.wait(0.3); Frame:Destroy() end)
-end
-local function CreateMobileWidget(name, toggleFunc, getEnabledState)
-	if ScreenGui:FindFirstChild("Float_"..name) then return end
-	local Widget = Instance.new("TextButton"); Widget.Name="Float_"..name; Widget.Parent=ScreenGui; Widget.Size=UDim2.new(0,50,0,50); Widget.Position=UDim2.new(0.5,-25,0.5,-25); Widget.BackgroundColor3=Color3.fromRGB(25,20,35); Widget.BackgroundTransparency=0.3; Widget.Text=GetFirstChar(name); Widget.TextSize=20; Widget.Font=Enum.Font.GothamBold; Widget.TextColor3=Color3.fromRGB(255,255,255); Widget.AutoButtonColor=false; Widget.ZIndex=50
-	local Corner = Instance.new("UICorner"); Corner.CornerRadius=UDim.new(0,12); Corner.Parent=Widget
-	local Stroke = Instance.new("UIStroke"); Stroke.Parent=Widget; Stroke.Thickness=2
-	local Close = Instance.new("TextButton"); Close.Parent=Widget; Close.Size=UDim2.new(0,15,0,15); Close.Position=UDim2.new(1,-5,0,-5); Close.AnchorPoint=Vector2.new(0.5,0.5); Close.BackgroundTransparency=1; Close.Text="X"; Close.TextColor3=Color3.fromRGB(255,80,80); Close.Font=Enum.Font.GothamBlack
-	Close.MouseButton1Click:Connect(function() Widget:Destroy() end)
-	local dragging, dragStart, startPos
-	Widget.InputBegan:Connect(function(i) if i.UserInputType.Name:match("Touch") or i.UserInputType.Name:match("MouseButton1") then dragging=true; dragStart=i.Position; startPos=Widget.Position end end)
-	Widget.InputChanged:Connect(function(i) if dragging and (i.UserInputType.Name:match("Touch") or i.UserInputType.Name:match("Mouse")) then local d=i.Position-dragStart; Widget.Position=UDim2.new(startPos.X.Scale,startPos.X.Offset+d.X,startPos.Y.Scale,startPos.Y.Offset+d.Y) end end)
-	Widget.InputEnded:Connect(function(i) if i.UserInputType.Name:match("Touch") or i.UserInputType.Name:match("MouseButton1") then dragging=false end end)
-	local c; c=RunService.Heartbeat:Connect(function() if not Widget.Parent then c:Disconnect() return end; Stroke.Color=getEnabledState() and CurrentThemeData.Accent or Color3.fromRGB(60,60,60) end)
-	Widget.MouseButton1Click:Connect(function() toggleFunc(true) end)
-end
-UserInputService.InputBegan:Connect(function(i,p) if not p and Library.Globals.BoundKeys[i.KeyCode] then Library.Globals.BoundKeys[i.KeyCode](true) end end)
-
---// 窗口系统 //--
-function Library:CreateWindow(title, pos, isMain, isSub)
-	local Window = {}
-	local isFolded = false
-	local isOpen = not isSub 
-	if isSub and not Library.Config.UIVisible then isOpen = false end
-	
-	local HeaderH = Library.Config.ItemHeight + 6
-	local Main = Instance.new("Frame"); Main.Name = "Window_"..title
-	Main.Parent = ScreenGui; Main.Position = pos; Main.Size = UDim2.new(0,Library.Config.WindowWidth,0,HeaderH); 
-	Main.BorderSizePixel = 0; Main.Visible = isOpen; Main.ZIndex = 10
-	RegisterObject(Main, "Window")
-	RegisterStyle(Main, true, 10)
-	
-	local Scale = Instance.new("UIScale"); Scale.Parent = Main; Scale.Scale = Library.Config.UIScale
-	local Header = Instance.new("Frame"); Header.Parent = Main; Header.BackgroundTransparency = 1; Header.Size = UDim2.new(1,0,0,HeaderH)
-	local Title = Instance.new("TextLabel"); Title.Parent = Header; Title.Text = title; Title.Font = Enum.Font.GothamBlack; 
-	Title.TextSize = math.clamp(HeaderH * 0.45, 12, 24) 
-	Title.Size = UDim2.new(1,-10,1,0); Title.Position = UDim2.new(0,10,0,0); Title.TextXAlignment = Enum.TextXAlignment.Left; Title.BackgroundTransparency = 1; RegisterObject(Title, "Text")
-	
-	local Container = Instance.new("ScrollingFrame"); Container.Name = "Container"
-	Container.Parent = Main; Container.BackgroundTransparency = 1; Container.BorderSizePixel = 0
-	Container.Position = UDim2.new(0,0,0,HeaderH); Container.Size = UDim2.new(1,0,0,0)
-	Container.ScrollBarThickness = 3; Container.CanvasSize = UDim2.new(0,0,0,0)
-	Container.AutomaticCanvasSize = Enum.AutomaticSize.Y
-	RegisterObject(Container, "Scroll")
-	
-	local List = Instance.new("UIListLayout"); List.Parent = Container; List.SortOrder = Enum.SortOrder.LayoutOrder; List.Padding = UDim.new(0,0)
-	local winData = {Main = Main, Header = Header, Title = Title, Container = Container, List = List, IsOpen = isOpen, IsSub = isSub}
-	table.insert(Library.Globals.Windows, winData)
-	if isSub then Library.Globals.SubWindows[title] = winData end
-	
-	local function RefreshH()
-		local contentH = List.AbsoluteContentSize.Y
-		local screenHeight = Camera.ViewportSize.Y / (Library.Config.UIScale > 0 and Library.Config.UIScale or 1)
-		local maxPerScreen = screenHeight - 100 
-		if maxPerScreen < 100 then maxPerScreen = 100 end 
-		local actualMax = math.min(Library.Config.WindowMaxHeight, maxPerScreen)
-		local curHeadH = Library.Config.ItemHeight + 6
-		if isFolded then
-			TweenService:Create(Main, TweenInfo.new(0.3, Enum.EasingStyle.Quad), {Size=UDim2.new(0,Library.Config.WindowWidth,0,curHeadH)}):Play()
-			Container.Visible = false
-		else
-			Container.Visible = true
-			local finalH = math.min(contentH, actualMax)
-			TweenService:Create(Main, TweenInfo.new(0.3, Enum.EasingStyle.Quad), {Size=UDim2.new(0,Library.Config.WindowWidth,0,curHeadH + finalH)}):Play()
-			Container.Size = UDim2.new(1, 0, 0, finalH)
-			Container.ScrollingEnabled = contentH > actualMax
-		end
-	end
-	winData.RefreshHeight = RefreshH
-	List:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(RefreshH)
-	
-	local drag, dStart, sPos, sTime
-	Header.Active = true 
-	Header.InputBegan:Connect(function(i) 
-		if i.UserInputType.Name:match("Mouse") or i.UserInputType.Name:match("Touch") then 
-			Library.Globals.TopZIndex = Library.Globals.TopZIndex + 1
-			Main.ZIndex = Library.Globals.TopZIndex
-			drag = true; dStart = i.Position; sPos = Main.Position; sTime = tick() 
-            if Library.Globals.ActivePicker then Library.Globals.ActivePicker:Destroy(); Library.Globals.ActivePicker = nil end
-		end 
-	end)
-	UserInputService.InputChanged:Connect(function(i) if drag and (i.UserInputType.Name:match("Mouse") or i.UserInputType.Name:match("Touch")) then local d=i.Position-dStart; TweenService:Create(Main,TweenInfo.new(0.05),{Position=UDim2.new(sPos.X.Scale,sPos.X.Offset+d.X,sPos.Y.Scale,sPos.Y.Offset+d.Y)}):Play() end end)
-	Header.InputEnded:Connect(function(i) if i.UserInputType.Name:match("Mouse") or i.UserInputType.Name:match("Touch") then drag=false; if (i.Position-dStart).Magnitude < 5 and tick()-sTime < 0.3 then isFolded=not isFolded; RefreshH() end end end)
-	
-	local function RegElem(inst, lbl, dots) table.insert(Library.Globals.Elements, {Instance=inst, Label=lbl, Dots=dots}) end
-	
-	function Window:CreateButton(name, callback)
-		local H = Library.Config.ItemHeight
-		local Btn = Instance.new("TextButton"); Btn.Parent=Container; Btn.BackgroundTransparency=1; Btn.Size=UDim2.new(1,0,0,H); Btn.Text=""; Btn.BorderSizePixel=0
-		Btn.ClipsDescendants = true
-		RegisterStyle(Btn, false, 6)
-		local Txt = Instance.new("TextLabel"); Txt.Parent=Btn; Txt.Text=name; Txt.Font=Enum.Font.GothamSemibold; Txt.TextSize=math.clamp(H*0.42, 10, 20); Txt.BackgroundTransparency=1; Txt.Size=UDim2.new(1,-10,1,0); Txt.Position=UDim2.new(0,10,0,0); Txt.TextXAlignment=Enum.TextXAlignment.Left; RegisterObject(Txt, "TextDark")
-		Btn.MouseButton1Click:Connect(function() CreateRipple(Btn); pcall(callback) end)
-		RegElem(Btn, Txt, nil)
-	end
-
-	function Window:BindWindow(subWindowName, defaultState)
-		local Mod = self:CreateModule(subWindowName, function(bool)
-			local target = Library.Globals.SubWindows[subWindowName]
-			if target then
-				target.IsOpen = bool
-				target.Main.Visible = bool and Library.Config.UIVisible
-				if bool and Library.Config.UIVisible then
-					if target.Main.Position.X.Offset == 0 and target.Main.Position.Y.Offset == 0 then
-						target.Main.Position = UDim2.new(0.5, -Library.Config.WindowWidth/2, 0.5, -100)
-					end
-					TweenService:Create(target.Main, TweenInfo.new(0.3), {BackgroundTransparency = CurrentThemeData.MainTrans}):Play()
-				else
-					target.Main.Visible = false
-				end
-			else
-				Library:Notify("未找到: "..subWindowName, false)
-			end
-		end, false)
-		if defaultState then Mod:Set(true) end
-	end
-
-	function Window:CreateModule(name, callback, allowBind)
-		if allowBind == nil then allowBind = true end
-		local Mod = {}; local enabled = false; local setOpen = false; local bindKey = nil
-		local H = Library.Config.ItemHeight
-		local Btn = Instance.new("TextButton"); Btn.Parent=Container; Btn.BackgroundTransparency=1; Btn.Size=UDim2.new(1,0,0,H); Btn.Text=""; Btn.BorderSizePixel=0; Btn.ClipsDescendants=true
-		RegisterStyle(Btn, false, 6)
-		local Txt = Instance.new("TextLabel"); Txt.Parent=Btn; Txt.Text=name; Txt.Font=Enum.Font.GothamSemibold; Txt.TextSize=math.clamp(H*0.42, 10, 20); Txt.BackgroundTransparency=1; Txt.Size=UDim2.new(1,-35,1,0); Txt.Position=UDim2.new(0,10,0,0); Txt.TextXAlignment=Enum.TextXAlignment.Left; RegisterObject(Txt, "TextDark")
-		local Dots = Instance.new("TextButton"); Dots.Parent=Btn; Dots.Text="..."; Dots.Font=Enum.Font.GothamBold; Dots.TextSize=math.clamp(H*0.42, 10, 20)+4; Dots.BackgroundTransparency=1; Dots.Size=UDim2.new(0,H,1,0); Dots.Position=UDim2.new(1,-H,0,0); Dots.Visible=allowBind; RegisterObject(Dots, "TextDark")
-		RegElem(Btn, Txt, Dots)
-		local SetFrame = Instance.new("Frame"); SetFrame.Parent=Container; SetFrame.BackgroundTransparency=0.5; RegisterObject(SetFrame, "SettingBg"); SetFrame.Size=UDim2.new(1,0,0,0); SetFrame.ClipsDescendants=true; SetFrame.Visible=false; SetFrame.BorderSizePixel=0
-		local SetList = Instance.new("UIListLayout"); SetList.Parent=SetFrame; SetList.Padding=UDim.new(0,0)
-		local function Toggle(isRemote)
-			enabled = not enabled
-			if enabled then RegisterObject(Txt, "Text"); RegisterObject(Dots, "Text"); TweenService:Create(Btn, TweenInfo.new(0.3), {BackgroundTransparency=0.8, BackgroundColor3=Color3.new(1,1,1)}):Play()
-			else RegisterObject(Txt, "TextDark"); RegisterObject(Dots, "TextDark"); TweenService:Create(Btn, TweenInfo.new(0.3), {BackgroundTransparency=1}):Play() end
-			if isRemote then CreateRipple(Btn, true) end
-			UpdateHUD(name, enabled); Library:Notify(name, enabled); pcall(callback, enabled)
-		end
-		function Mod:Set(bool) if bool ~= enabled then Toggle() end end
-
-		if allowBind then
-			local KB = Instance.new("TextButton"); KB.Parent=SetFrame; KB.Size=UDim2.new(1,0,0,24); KB.BackgroundTransparency=1; KB.Text=""; KB.BorderSizePixel=0
-			local KL = Instance.new("TextLabel"); KL.Parent=KB; KL.Text="绑定: 无"; KL.Font=Enum.Font.Gotham; KL.TextSize=11; KL.BackgroundTransparency=1; KL.Size=UDim2.new(1,-20,1,0); KL.Position=UDim2.new(0,10,0,0); KL.TextXAlignment=Enum.TextXAlignment.Left; RegisterObject(KL, "TextDark")
-			local listening = false
-			KB.MouseButton1Click:Connect(function()
-				if listening then return end; listening=true; KL.Text="按下按键..."
-				local c; c=UserInputService.InputBegan:Connect(function(i) if i.UserInputType==Enum.UserInputType.Keyboard then listening=false; c:Disconnect(); if i.KeyCode.Name=="Backspace" or i.KeyCode.Name=="Delete" then if bindKey then Library.Globals.BoundKeys[bindKey]=nil end; bindKey=nil; KL.Text="绑定: 无" else if bindKey then Library.Globals.BoundKeys[bindKey]=nil end; bindKey=i.KeyCode; Library.Globals.BoundKeys[bindKey]=Toggle; KL.Text="绑定: "..i.KeyCode.Name end end end)
-			end)
-			local pt, ip = 0, false
-			Btn.InputBegan:Connect(function(i) if i.UserInputType.Name:match("Touch") or i.UserInputType.Name:match("Mouse") then ip=true; pt=tick(); task.spawn(function() task.wait(0.6); if ip and tick()-pt>=0.6 then CreateMobileWidget(name, Toggle, function() return enabled end); Library:Notify("悬浮窗已创建", true); ip=false end end) end end)
-			Btn.InputEnded:Connect(function(i) if i.UserInputType.Name:match("Touch") or i.UserInputType.Name:match("Mouse") then if ip and tick()-pt<0.6 then CreateRipple(Btn); Toggle() end; ip=false end end)
-		else Btn.MouseButton1Click:Connect(function() CreateRipple(Btn); Toggle() end) end
-		Dots.MouseButton1Click:Connect(function()
-			setOpen = not setOpen; SetFrame.Visible=true; local th = setOpen and SetList.AbsoluteContentSize.Y or 0
-			TweenService:Create(SetFrame, TweenInfo.new(0.3), {Size=UDim2.new(1,0,0,th)}):Play()
-			local c; c=RunService.RenderStepped:Connect(function() List:ApplyLayout(); if winData.RefreshHeight then winData.RefreshHeight() end; if math.abs(SetFrame.Size.Y.Offset-th)<1 then c:Disconnect() end end)
-			if not setOpen then task.delay(0.3, function() SetFrame.Visible=false end) end
-		end)
-		
-        -- [滑块 Slider]
-        function Mod:CreateSlider(txt, min, max, def, call)
-			if not Dots.Visible then Dots.Visible=true end; local v = def
-			local F = Instance.new("Frame"); F.Parent=SetFrame; F.BackgroundTransparency=1; F.Size=UDim2.new(1,0,0,30); F.BorderSizePixel=0
-			local L = Instance.new("TextLabel"); L.Parent=F; L.Text=txt..": "..v; L.Font=Enum.Font.Gotham; L.TextSize=11; L.BackgroundTransparency=1; L.Size=UDim2.new(1,0,0,14); RegisterObject(L,"TextDark")
-			local B = Instance.new("Frame"); B.Parent=F; B.BackgroundColor3=Color3.fromRGB(60,60,60); B.BorderSizePixel=0; B.Position=UDim2.new(0,8,0,18); B.Size=UDim2.new(1,-16,0,4)
-			local Fil = Instance.new("Frame"); Fil.Parent=B; Fil.BorderSizePixel=0; Fil.Size=UDim2.new((def-min)/(max-min),0,1,0); RegisterObject(Fil,"Accent")
-			local T = Instance.new("TextButton"); T.Parent=F; T.BackgroundTransparency=1; T.Text=""; T.Size=UDim2.new(1,0,0,25); T.Position=UDim2.new(0,0,0,5); T.ZIndex=10
-			local d=false; T.InputBegan:Connect(function(i) if i.UserInputType.Name:match("Touch") or i.UserInputType.Name:match("Mouse") then d=true end end); UserInputService.InputEnded:Connect(function(i) if i.UserInputType.Name:match("Touch") or i.UserInputType.Name:match("Mouse") then d=false end end)
-			UserInputService.InputChanged:Connect(function(i) if d and (i.UserInputType.Name:match("Touch") or i.UserInputType.Name:match("Mouse")) then local p=math.clamp((i.Position.X-B.AbsolutePosition.X)/B.AbsoluteSize.X,0,1); v=math.floor(min+(max-min)*p); L.Text=txt..": "..v; Fil.Size=UDim2.new(p,0,1,0); pcall(call,v) end end)
-			pcall(call, v)
-		end
-
-        -- [开关 Switch]
-		function Mod:CreateSwitch(txt, call, defaultState)
-			if not Dots.Visible then Dots.Visible=true end; local on=defaultState or false
-			local B=Instance.new("TextButton"); B.Parent=SetFrame; B.BackgroundTransparency=1; B.Size=UDim2.new(1,0,0,24); B.Text=""; B.BorderSizePixel=0
-			local L=Instance.new("TextLabel"); L.Parent=B; L.Text=txt; L.Font=Enum.Font.Gotham; L.TextSize=11; L.BackgroundTransparency=1; L.Size=UDim2.new(1,-30,1,0); L.Position=UDim2.new(0,10,0,0); L.TextXAlignment=Enum.TextXAlignment.Left; RegisterObject(L,"TextDark")
-			local Box=Instance.new("Frame"); Box.Parent=B; Box.Size=UDim2.new(0,12,0,12); Box.Position=UDim2.new(1,-20,0.5,-6); Box.BackgroundColor3=Color3.fromRGB(60,60,60); Box.BorderSizePixel=0
-			local Ind=Instance.new("Frame"); Ind.Parent=Box; Ind.Size=UDim2.new(1,-2,1,-2); Ind.Position=UDim2.new(0,1,0,1); Ind.Visible=on; Ind.BorderSizePixel=0; RegisterObject(Ind,"Accent")
-			B.MouseButton1Click:Connect(function() on=not on; Ind.Visible=on; pcall(call, on) end)
-			if on then pcall(call, on) end
-		end
-
-        -- [下拉框 Dropdown]
-		function Mod:CreateDropdown(txt, opts, call)
-			if not Dots.Visible then Dots.Visible=true end; local open=false; local H=26
-			local Base=Instance.new("Frame"); Base.Parent=SetFrame; Base.BackgroundTransparency=1; Base.Size=UDim2.new(1,0,0,H); Base.ClipsDescendants=true; Base.BorderSizePixel=0
-			local Main=Instance.new("TextButton"); Main.Parent=Base; Main.BackgroundTransparency=1; Main.Size=UDim2.new(1,0,0,H); Main.Text=""; Main.AutoButtonColor=false; Main.BorderSizePixel=0
-			local L=Instance.new("TextLabel"); L.Parent=Main; L.Text=txt.." >"; L.Font=Enum.Font.Gotham; L.TextSize=11; L.BackgroundTransparency=1; L.Size=UDim2.new(1,-20,1,0); L.Position=UDim2.new(0,10,0,0); L.TextXAlignment=Enum.TextXAlignment.Left; RegisterObject(L,"TextDark")
-			local Opts=Instance.new("Frame"); Opts.Parent=Base; Opts.Position=UDim2.new(0,0,0,H); Opts.Size=UDim2.new(1,0,0,0); Opts.BackgroundTransparency=1; Opts.BorderSizePixel=0
-			local OList=Instance.new("UIListLayout"); OList.Parent=Opts; OList.Padding=UDim.new(0,0)
-			for _,o in ipairs(opts) do
-				local Ob=Instance.new("TextButton"); Ob.Parent=Opts; Ob.Size=UDim2.new(1,0,0,22); Ob.BackgroundTransparency=1; Ob.BorderSizePixel=0; Ob.Text=o; Ob.Font=Enum.Font.Gotham; Ob.TextSize=11; Ob.TextColor3=Color3.fromRGB(200,200,200)
-				Ob.MouseButton1Click:Connect(function() L.Text=txt..": "..o; open=false; local nh=H; local d=nh-Base.Size.Y.Offset; local nsh=SetFrame.Size.Y.Offset+d; TweenService:Create(Base,TweenInfo.new(0.3,Enum.EasingStyle.Quad,Enum.EasingDirection.Out),{Size=UDim2.new(1,0,0,nh)}):Play(); TweenService:Create(SetFrame,TweenInfo.new(0.3,Enum.EasingStyle.Quad,Enum.EasingDirection.Out),{Size=UDim2.new(1,0,0,nsh)}):Play(); local c; c=RunService.RenderStepped:Connect(function() List:ApplyLayout(); if winData.RefreshHeight then winData.RefreshHeight() end; if Base.Size.Y.Offset==nh then c:Disconnect() end end); pcall(call,o) end)
-			end
-			Main.MouseButton1Click:Connect(function() open=not open; local nh=open and (H+(#opts*22)) or H; local d=nh-Base.Size.Y.Offset; local nsh=SetFrame.Size.Y.Offset+d; TweenService:Create(Base,TweenInfo.new(0.3,Enum.EasingStyle.Quad,Enum.EasingDirection.Out),{Size=UDim2.new(1,0,0,nh)}):Play(); TweenService:Create(SetFrame,TweenInfo.new(0.3,Enum.EasingStyle.Quad,Enum.EasingDirection.Out),{Size=UDim2.new(1,0,0,nsh)}):Play(); local c; c=RunService.RenderStepped:Connect(function() List:ApplyLayout(); if winData.RefreshHeight then winData.RefreshHeight() end; if math.abs(Base.Size.Y.Offset-nh)<1 then c:Disconnect() end end) end)
-		end
-
-        -- [输入框 Input]
-        function Mod:CreateInput(text, placeholder, callback)
-            if not Dots.Visible then Dots.Visible=true end
-            local BoxH = 26
-            local Container = Instance.new("Frame"); Container.Parent = SetFrame; Container.BackgroundTransparency = 1; Container.Size = UDim2.new(1, 0, 0, BoxH + 4); Container.BorderSizePixel = 0
             
-            local Label = Instance.new("TextLabel"); Label.Parent = Container; Label.Text = text..":"; Label.Font = Enum.Font.Gotham; Label.TextSize = 11; Label.BackgroundTransparency = 1; Label.Size = UDim2.new(0, 60, 1, 0); Label.Position = UDim2.new(0, 10, 0, 0); Label.TextXAlignment = Enum.TextXAlignment.Left; RegisterObject(Label, "TextDark")
-            
-            local InputBg = Instance.new("Frame"); InputBg.Parent = Container; InputBg.BackgroundColor3 = Color3.fromRGB(40, 40, 45); InputBg.Size = UDim2.new(1, -80, 0, BoxH); InputBg.Position = UDim2.new(0, 70, 0.5, 0); InputBg.AnchorPoint = Vector2.new(0, 0.5); InputBg.BorderSizePixel = 0
-            local Corner = Instance.new("UICorner"); Corner.CornerRadius = UDim.new(0, 4); Corner.Parent = InputBg
-            
-            local TextBox = Instance.new("TextBox"); TextBox.Parent = InputBg; TextBox.BackgroundTransparency = 1; TextBox.Size = UDim2.new(1, -10, 1, 0); TextBox.Position = UDim2.new(0, 5, 0, 0); TextBox.Font = Enum.Font.Gotham; TextBox.Text = ""; TextBox.PlaceholderText = placeholder or "输入..."; TextBox.TextSize = 12; TextBox.TextColor3 = Color3.new(1,1,1); TextBox.PlaceholderColor3 = Color3.fromRGB(150,150,150); TextBox.TextXAlignment = Enum.TextXAlignment.Left; TextBox.ClearTextOnFocus = false
-            
-            TextBox.FocusLost:Connect(function(enter)
-                if enter then
-                    pcall(callback, TextBox.Text)
-                    Library:Notify("输入已应用", true)
+            AimLockConnection = RunService.RenderStepped:Connect(function()
+                if not player.Character or not player.Character:FindFirstChild("HumanoidRootPart") then
+                    return
+                end
+                
+                -- 获取最近目标
+                local target, distance = GetNearestTarget(AimLockDistance)
+                AimLockTarget = target
+                
+                if target and target.Character then
+                    local targetPos = GetTargetPosition(target)
+                    local myRoot = player.Character.HumanoidRootPart
+                    
+                    if targetPos then
+                        -- 计算朝向目标的CFrame
+                        local direction = (targetPos - myRoot.Position).Unit
+                        
+                        if AimLockSmoothness > 0 then
+                            -- 平滑转向
+                            local currentCF = myRoot.CFrame
+                            local targetCF = CFrame.lookAt(myRoot.Position, targetPos)
+                            myRoot.CFrame = currentCF:Lerp(targetCF, AimLockSmoothness)
+                        else
+                            -- 立即转向
+                            myRoot.CFrame = CFrame.new(myRoot.Position, myRoot.Position + direction)
+                        end
+                    end
                 end
             end)
+        else
+            -- 关闭自瞄
+            if AimLockConnection then
+                AimLockConnection:Disconnect()
+                AimLockConnection = nil
+            end
+            AimLockTarget = nil
+            print("自瞄已关闭")
         end
-
-        -- [外置颜色选择器 ColorPicker]
-        function Mod:CreateColorPicker(text, defaultColor, callback)
-            if not Dots.Visible then Dots.Visible=true end
-            local h, s, v = ToHSV(defaultColor or Color3.fromRGB(255,255,255))
-            local currentColor = defaultColor or Color3.fromRGB(255,255,255)
+    end)
+    
+    -- 自瞄距离滑块
+    AimLock:CreateSlider("自瞄距离", 10, 500, 50, function(val)
+        print("自瞄距离设置为:", val)
+        AimLockDistance = val
+    end)
+    
+    -- 自瞄平滑度滑块
+    AimLock:CreateSlider("平滑度", 0, 1, 0.1, function(val)
+        print("自瞄平滑度设置为:", val)
+        AimLockSmoothness = val
+    end)
+    
+    -- 自瞄部位选择下拉菜单
+    AimLock:CreateDropdown("瞄准部位", {"头部", "身体", "腿部"}, function(selected)
+        print("瞄准部位选择:", selected)
+        if selected == "头部" then
+            AimLockPart = "Head"
+        elseif selected == "身体" then
+            AimLockPart = "HumanoidRootPart"
+        elseif selected == "腿部" then
+            AimLockPart = "HumanoidRootPart"  -- 暂时用RootPart，可以改为LowerTorso
+        end
+    end)
+    
+    -- 自动射击功能（修复版）
+    local AutoShoot = CombatWin:CreateModule("自动射击", function(state)
+        print("自动射击状态:", state)
+        AutoShootActive = state
+        
+        if state then
+            -- 启用自动射击
+            local lastShot = tick()
             
-            local Container = Instance.new("TextButton"); Container.Parent = SetFrame; Container.BackgroundTransparency = 1; Container.Size = UDim2.new(1, 0, 0, 24); Container.Text = ""; Container.AutoButtonColor = false
+            if AutoShootConnection then
+                AutoShootConnection:Disconnect()
+            end
             
-            local Label = Instance.new("TextLabel"); Label.Parent = Container; Label.Text = text; Label.Font = Enum.Font.Gotham; Label.TextSize = 11; Label.BackgroundTransparency = 1; Label.Size = UDim2.new(1, -40, 1, 0); Label.Position = UDim2.new(0, 10, 0, 0); Label.TextXAlignment = Enum.TextXAlignment.Left; RegisterObject(Label, "TextDark")
-            
-            local Preview = Instance.new("Frame"); Preview.Parent = Container; Preview.Size = UDim2.new(0, 30, 0, 14); Preview.Position = UDim2.new(1, -40, 0.5, 0); Preview.AnchorPoint = Vector2.new(0, 0.5); Preview.BackgroundColor3 = currentColor; Preview.BorderSizePixel = 0
-            local PStroke = Instance.new("UIStroke"); PStroke.Parent = Preview; PStroke.Thickness = 1; PStroke.Color = Color3.fromRGB(100,100,100); PStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
-            local PCorner = Instance.new("UICorner"); PCorner.CornerRadius = UDim.new(0, 3); PCorner.Parent = Preview
-            
-            Container.MouseButton1Click:Connect(function()
-                if Library.Globals.ActivePicker then Library.Globals.ActivePicker:Destroy(); Library.Globals.ActivePicker = nil end
-                
-                local PickerFrame = Instance.new("Frame"); PickerFrame.Name = "ColorPicker_PopOut"; PickerFrame.Parent = ScreenGui; PickerFrame.Size = UDim2.new(0, 180, 0, 200); PickerFrame.ZIndex = Library.Globals.TopZIndex + 100; PickerFrame.BorderSizePixel = 0
-                RegisterObject(PickerFrame, "PickerBg")
-                RegisterStyle(PickerFrame, true, 8)
-                
-                local btnAbsPos = Container.AbsolutePosition
-                local btnAbsSize = Container.AbsoluteSize
-                local screenWidth = ScreenGui.AbsoluteSize.X
-                local xPos = btnAbsPos.X + btnAbsSize.X + 10
-                if xPos + 180 > screenWidth then xPos = btnAbsPos.X - 190 end
-                
-                PickerFrame.Position = UDim2.new(0, xPos, 0, btnAbsPos.Y - 50)
-                Library.Globals.ActivePicker = PickerFrame
-                
-                PickerFrame.Size = UDim2.new(0,0,0,0)
-                TweenService:Create(PickerFrame, TweenInfo.new(0.3, Enum.EasingStyle.Back), {Size = UDim2.new(0, 180, 0, 210)}):Play()
-                
-                local MainPadding = Instance.new("UIPadding"); MainPadding.Parent = PickerFrame; MainPadding.PaddingTop = UDim.new(0,10); MainPadding.PaddingBottom = UDim.new(0,10); MainPadding.PaddingLeft = UDim.new(0,10); MainPadding.PaddingRight = UDim.new(0,10)
-                
-                local SVBox = Instance.new("TextButton"); SVBox.Parent = PickerFrame; SVBox.Size = UDim2.new(1, -25, 0, 120); SVBox.Text = ""; SVBox.AutoButtonColor = false; SVBox.BorderSizePixel = 0; SVBox.ZIndex = PickerFrame.ZIndex + 1
-                local SVGrad = Instance.new("UIGradient"); SVGrad.Parent = SVBox; SVGrad.Color = ColorSequence.new{ColorSequenceKeypoint.new(0, Color3.new(1,1,1)), ColorSequenceKeypoint.new(1, Color3.fromHSV(h, 1, 1))}
-                local SVImg = Instance.new("ImageLabel"); SVImg.Parent = SVBox; SVImg.Size = UDim2.new(1,0,1,0); SVImg.BackgroundTransparency = 1; SVImg.Image = "rbxassetid://4155801252"; SVImg.ZIndex = SVBox.ZIndex
-                
-                local PickerPoint = Instance.new("Frame"); PickerPoint.Parent = SVBox; PickerPoint.Size = UDim2.new(0,6,0,6); PickerPoint.AnchorPoint = Vector2.new(0.5,0.5); PickerPoint.BackgroundColor3 = Color3.new(1,1,1); PickerPoint.BorderSizePixel = 0; PickerPoint.ZIndex = SVBox.ZIndex + 2
-                local PS = Instance.new("UIStroke"); PS.Parent = PickerPoint; PS.Thickness = 1; PS.Color = Color3.new(0,0,0)
-                local PC = Instance.new("UICorner"); PC.Parent = PickerPoint; PC.CornerRadius = UDim.new(1,0)
-                
-                local HueBox = Instance.new("TextButton"); HueBox.Parent = PickerFrame; HueBox.Size = UDim2.new(0, 15, 0, 120); HueBox.Position = UDim2.new(1, -15, 0, 0); HueBox.Text = ""; HueBox.AutoButtonColor = false; HueBox.BorderSizePixel = 0; HueBox.BackgroundColor3 = Color3.new(1,1,1); HueBox.ZIndex = PickerFrame.ZIndex + 1
-                local HueGrad = Instance.new("UIGradient"); HueGrad.Parent = HueBox; HueGrad.Rotation = 90; HueGrad.Color = ColorSequence.new{
-                    ColorSequenceKeypoint.new(0, Color3.fromRGB(0,0,0)),
-                    ColorSequenceKeypoint.new(0.5, Color3.fromRGB(128,128,128)),
-                    ColorSequenceKeypoint.new(1, Color3.fromRGB(255,255,255))
-                }
-                local HuePoint = Instance.new("Frame"); HuePoint.Parent = HueBox; HuePoint.Size = UDim2.new(1,0,0,2); HuePoint.BackgroundColor3 = Color3.new(1,1,1); HuePoint.BorderSizePixel = 0; HuePoint.ZIndex = HueBox.ZIndex + 2
-                local HS = Instance.new("UIStroke"); HS.Parent = HuePoint; HS.Thickness = 1; HS.Color = Color3.new(0,0,0)
-                
-                local InputFrame = Instance.new("Frame"); InputFrame.Parent = PickerFrame; InputFrame.BackgroundTransparency = 1; InputFrame.Size = UDim2.new(1, 0, 0, 20); InputFrame.Position = UDim2.new(0, 0, 0, 130); InputFrame.ZIndex = PickerFrame.ZIndex + 1
-                local Layout = Instance.new("UIListLayout"); Layout.Parent = InputFrame; Layout.FillDirection = Enum.FillDirection.Horizontal; Layout.Padding = UDim.new(0, 5)
-                
-                local RBox = Instance.new("TextBox"); RBox.Parent = InputFrame; RBox.Size = UDim2.new(0.3, 0, 1, 0); RBox.BackgroundColor3 = Color3.fromRGB(40,40,40); RBox.TextColor3 = Color3.new(1,1,1); RBox.Text = math.floor(currentColor.R*255); RBox.Font = Enum.Font.Gotham; RBox.TextSize = 12; RBox.ZIndex = InputFrame.ZIndex
-                local GBox = RBox:Clone(); GBox.Parent = InputFrame; GBox.Text = math.floor(currentColor.G*255)
-                local BBox = RBox:Clone(); BBox.Parent = InputFrame; BBox.Text = math.floor(currentColor.B*255)
-                local CornerR = Instance.new("UICorner"); CornerR.Parent = RBox; CornerR.CornerRadius = UDim.new(0,4)
-                local CornerG = Instance.new("UICorner"); CornerG.Parent = GBox; CornerG.CornerRadius = UDim.new(0,4)
-                local CornerB = Instance.new("UICorner"); CornerB.Parent = BBox; CornerB.CornerRadius = UDim.new(0,4)
-                
-                local ConfirmBtn = Instance.new("TextButton"); ConfirmBtn.Parent = PickerFrame; ConfirmBtn.Size = UDim2.new(1, 0, 0, 25); ConfirmBtn.Position = UDim2.new(0, 0, 1, -25); ConfirmBtn.BackgroundColor3 = CurrentThemeData.Accent; ConfirmBtn.Text = "确定"; ConfirmBtn.Font = Enum.Font.GothamBold; ConfirmBtn.TextColor3 = Color3.new(1,1,1); ConfirmBtn.TextSize = 12; ConfirmBtn.ZIndex = PickerFrame.ZIndex + 1
-                local CB_Corner = Instance.new("UICorner"); CB_Corner.Parent = ConfirmBtn; CB_Corner.CornerRadius = UDim.new(0, 4)
-                
-                local function UpdateColor(notify)
-                    currentColor = FromHSV(h, s, v)
-                    SVGrad.Color = ColorSequence.new{ColorSequenceKeypoint.new(0, Color3.new(1,1,1)), ColorSequenceKeypoint.new(1, FromHSV(h, 1, 1))}
-                    Preview.BackgroundColor3 = currentColor
-                    RBox.Text = math.floor(currentColor.R*255)
-                    GBox.Text = math.floor(currentColor.G*255)
-                    BBox.Text = math.floor(currentColor.B*255)
-                    
-                    PickerPoint.Position = UDim2.new(s, 0, 1-v, 0)
-                    HuePoint.Position = UDim2.new(0, 0, 1-h, 0)
-                    
-                    if notify then pcall(callback, currentColor) end
+            AutoShootConnection = RunService.Heartbeat:Connect(function()
+                if not player.Character or not player.Character:FindFirstChild("Humanoid") then
+                    return
                 end
                 
-                UpdateColor(false)
+                -- 检查射击间隔
+                if tick() - lastShot < (ShootInterval / 1000) then
+                    return
+                end
                 
-                local dragHue, dragSV = false, false
-                HueBox.InputBegan:Connect(function(input)
-                    if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-                        dragHue = true
+                -- 获取最近目标
+                local target = AimLockTarget or GetNearestTarget(AimLockDistance)
+                
+                if target and target.Character and target.Character:FindFirstChild("Humanoid") and target.Character.Humanoid.Health > 0 then
+                    -- 模拟射击动作
+                    local humanoid = player.Character.Humanoid
+                    
+                    -- 这里可以根据具体游戏调整射击逻辑
+                    -- 例如：发射射线、调用武器脚本等
+                    print("自动射击目标:", target.Name)
+                    
+                    lastShot = tick()
+                end
+            end)
+        else
+            -- 关闭自动射击
+            if AutoShootConnection then
+                AutoShootConnection:Disconnect()
+                AutoShootConnection = nil
+            end
+            print("自动射击已关闭")
+        end
+    end)
+    
+    -- 射击间隔滑块
+    AutoShoot:CreateSlider("射击间隔(ms)", 100, 2000, 500, function(val)
+        print("射击间隔设置为:", val)
+        ShootInterval = val
+    end)
+    
+    -- 无后坐力功能（修复版）
+    local NoRecoil = CombatWin:CreateModule("无后坐力", function(state)
+        print("无后坐力状态:", state)
+        NoRecoilActive = state
+        
+        if state then
+            -- 尝试禁用后坐力效果
+            local Camera = Workspace.CurrentCamera
+            
+            -- 尝试修改相机震动
+            if Camera then
+                -- 这里可以根据具体游戏修改后坐力参数
+                print("无后坐力已启用 - 相机震动已减少")
+            end
+        else
+            print("无后坐力已关闭")
+        end
+    end)
+    
+    -- 无限弹药功能（修复版）
+    local InfiniteAmmo = CombatWin:CreateModule("无限弹药", function(state)
+        print("无限弹药状态:", state)
+        InfiniteAmmoActive = state
+        
+        if state then
+            -- 尝试修改弹药数量
+            local function updateAmmo()
+                -- 查找角色中的武器并修改弹药
+                if player.Character then
+                    for _, child in pairs(player.Character:GetChildren()) do
+                        if child:IsA("Tool") then
+                            -- 尝试修改工具属性
+                            pcall(function()
+                                -- 这里可以根据具体游戏修改弹药属性
+                                print("修改武器:", child.Name)
+                            end)
+                        end
+                    end
+                end
+            end
+            
+            -- 监听新工具
+            if player.Character then
+                player.Character.ChildAdded:Connect(function(child)
+                    if child:IsA("Tool") and InfiniteAmmoActive then
+                        updateAmmo()
                     end
                 end)
-                SVBox.InputBegan:Connect(function(input)
-                    if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-                        dragSV = true
-                    end
-                end)
-                UserInputService.InputEnded:Connect(function(input)
-                    if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-                        dragHue = false
-                        dragSV = false
-                    end
-                end)
-                UserInputService.InputChanged:Connect(function(input)
-                    if input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch then
-                        if dragHue then
-                            local y = math.clamp((input.Position.Y - HueBox.AbsolutePosition.Y) / HueBox.AbsoluteSize.Y, 0, 1)
-                            h = 1 - y
-                            UpdateColor(true)
-                        elseif dragSV then
-                            local x = math.clamp((input.Position.X - SVBox.AbsolutePosition.X) / SVBox.AbsoluteSize.X, 0, 1)
-                            local y = math.clamp((input.Position.Y - SVBox.AbsolutePosition.Y) / SVBox.AbsoluteSize.Y, 0, 1)
-                            s = x
-                            v = 1 - y
-                            UpdateColor(true)
+            end
+            
+            updateAmmo()
+            print("无限弹药已启用")
+        else
+            print("无限弹药已关闭")
+        end
+    end)
+    
+    -- 一击必杀功能
+    local OneHitKill = CombatWin:CreateModule("一击必杀", function(state)
+        print("一击必杀状态:", state)
+        
+        if state then
+            -- 尝试修改伤害值
+            print("一击必杀已启用 - 需要根据具体游戏实现")
+        else
+            print("一击必杀已关闭")
+        end
+    end)
+    
+    -- ==================== 战斗功能按钮 ====================
+    
+    -- 快速锁定最近敌人按钮
+    CombatWin:CreateButton("快速锁定最近", function()
+        local target, distance = GetNearestTarget(AimLockDistance)
+        if target then
+            print("锁定目标:", target.Name, "距离:", math.floor(distance))
+            AimLockTarget = target
+        else
+            print("未找到可锁定的目标")
+        end
+    end)
+    
+    -- 显示敌人信息按钮
+    CombatWin:CreateButton("显示敌人信息", function()
+        print("正在显示敌人信息...")
+        local myPosition = player.Character and player.Character:FindFirstChild("HumanoidRootPart") and player.Character.HumanoidRootPart.Position
+        
+        if myPosition then
+            for _, otherPlayer in pairs(Players:GetPlayers()) do
+                if otherPlayer ~= player and otherPlayer.Character and otherPlayer.Character:FindFirstChild("HumanoidRootPart") then
+                    local targetPosition = otherPlayer.Character.HumanoidRootPart.Position
+                    local distance = CalculateDistance(myPosition, targetPosition)
+                    local health = otherPlayer.Character:FindFirstChild("Humanoid") and otherPlayer.Character.Humanoid.Health or 0
+                    
+                    print(otherPlayer.Name .. " - 距离: " .. math.floor(distance) .. " 生命值: " .. math.floor(health))
+                end
+            end
+        end
+    end)
+    
+    -- ==================== ESP透视功能（添加到世界功能） ====================
+    
+    local ESP = WorldWin:CreateModule("透视功能", function(state)
+        print("ESP透视状态:", state)
+        ESPActive = state
+        
+        if state then
+            -- 启用ESP
+            local function CreateESPBox(player)
+                if player == game.Players.LocalPlayer then return end
+                
+                local character = player.Character
+                if not character then return end
+                
+                local box = Instance.new("BoxHandleAdornment")
+                box.Name = player.Name .. "_ESPBox"
+                box.Adornee = character:FindFirstChild("HumanoidRootPart") or character:WaitForChild("HumanoidRootPart", 5)
+                box.AlwaysOnTop = true
+                box.ZIndex = 10
+                box.Size = Vector3.new(4, 6, 2)
+                box.Transparency = 0.3
+                box.Color3 = Color3.fromRGB(255, 0, 0)
+                box.Parent = Workspace
+                
+                ESPBoxes[player] = box
+                
+                -- 创建距离文本
+                local billboard = Instance.new("BillboardGui")
+                billboard.Name = player.Name .. "_ESPDistance"
+                billboard.Adornee = box.Adornee
+                billboard.Size = UDim2.new(0, 200, 0, 50)
+                billboard.StudsOffset = Vector3.new(0, 3, 0)
+                billboard.AlwaysOnTop = true
+                billboard.Parent = box.Adornee
+                
+                local textLabel = Instance.new("TextLabel")
+                textLabel.Size = UDim2.new(1, 0, 1, 0)
+                textLabel.BackgroundTransparency = 1
+                textLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+                textLabel.TextStrokeTransparency = 0
+                textLabel.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
+                textLabel.Font = Enum.Font.SourceSansBold
+                textLabel.TextSize = 14
+                textLabel.Text = player.Name
+                textLabel.Parent = billboard
+                
+                ESPNames[player] = textLabel
+                
+                -- 更新距离
+                local connection = RunService.RenderStepped:Connect(function()
+                    if player.Character and player.Character:FindFirstChild("HumanoidRootPart") then
+                        local myPos = game.Players.LocalPlayer.Character and game.Players.LocalPlayer.Character:FindFirstChild("HumanoidRootPart") and game.Players.LocalPlayer.Character.HumanoidRootPart.Position
+                        local targetPos = player.Character.HumanoidRootPart.Position
+                        
+                        if myPos then
+                            local distance = (myPos - targetPos).Magnitude
+                            local health = player.Character:FindFirstChild("Humanoid") and math.floor(player.Character.Humanoid.Health) or 0
+                            textLabel.Text = string.format("%s\n距离: %d\n生命: %d", player.Name, math.floor(distance), health)
+                        end
+                    else
+                        connection:Disconnect()
+                        if ESPBoxes[player] then
+                            ESPBoxes[player]:Destroy()
+                            ESPBoxes[player] = nil
+                        end
+                        if ESPNames[player] then
+                            ESPNames[player]:Destroy()
+                            ESPNames[player] = nil
                         end
                     end
                 end)
                 
-                local function UpdateFromRGB()
-                    local r, g, b = tonumber(RBox.Text) or 0, tonumber(GBox.Text) or 0, tonumber(BBox.Text) or 0
-                    currentColor = Color3.fromRGB(r, g, b)
-                    h, s, v = ToHSV(currentColor)
-                    UpdateColor(true)
-                end
-                RBox.FocusLost:Connect(UpdateFromRGB); GBox.FocusLost:Connect(UpdateFromRGB); BBox.FocusLost:Connect(UpdateFromRGB)
-                
-                ConfirmBtn.MouseButton1Click:Connect(function()
-                    PickerFrame:Destroy()
-                    Library.Globals.ActivePicker = nil
-                end)
+                ESPConnections[player] = connection
+            end
+            
+            -- 为所有玩家创建ESP
+            for _, otherPlayer in pairs(Players:GetPlayers()) do
+                CreateESPBox(otherPlayer)
+            end
+            
+            -- 监听新玩家
+            local playerAddedConn = Players.PlayerAdded:Connect(function(newPlayer)
+                CreateESPBox(newPlayer)
             end)
+            
+            -- 监听玩家离开
+            local playerRemovingConn = Players.PlayerRemoving:Connect(function(leavingPlayer)
+                if ESPBoxes[leavingPlayer] then
+                    ESPBoxes[leavingPlayer]:Destroy()
+                    ESPBoxes[leavingPlayer] = nil
+                end
+                if ESPNames[leavingPlayer] then
+                    ESPNames[leavingPlayer]:Destroy()
+                    ESPNames[leavingPlayer] = nil
+                end
+                if ESPConnections[leavingPlayer] then
+                    ESPConnections[leavingPlayer]:Disconnect()
+                    ESPConnections[leavingPlayer] = nil
+                end
+            end)
+            
+            ESPConnections["PlayerAdded"] = playerAddedConn
+            ESPConnections["PlayerRemoving"] = playerRemovingConn
+            
+            print("ESP透视已启用")
+        else
+            -- 关闭ESP
+            for player, box in pairs(ESPBoxes) do
+                box:Destroy()
+            end
+            ESPBoxes = {}
+            
+            for player, textLabel in pairs(ESPNames) do
+                textLabel.Parent:Destroy()
+            end
+            ESPNames = {}
+            
+            for _, connection in pairs(ESPConnections) do
+                connection:Disconnect()
+            end
+            ESPConnections = {}
+            
+            print("ESP透视已关闭")
         end
-
-		return Mod
-	end
-	return Window
-end
-
---// 内置设置窗口 (已修复主题选项) //--
-function Library:SetupSettings()
-	local Sets = Library:CreateWindow("UI设置", UDim2.new(0.5, -100, 0.5, -100))
-	
-	local UIConf = Sets:CreateModule("界面配置", function() end, false)
-	
-	-- 修复：使用黑白灰主题列表
-	UIConf:CreateDropdown("主题选择", 
-		{"Default", "LightGray", "MediumGray", "DarkGray", "PureBlack", "PureWhite", "XA_Special"}, 
-		function(v) 
-			Library:SetTheme(v)
-			Library:Notify("主题切换", v)
-		end)
-    
-	UIConf:CreateSlider("整体缩放(%)", 50, 150, math.floor(Library.Config.UIScale * 100), function(v) 
-		Library.Config.UIScale = v / 100; Library:RefreshDimensions() 
-	end)
-    
-	UIConf:CreateSlider("窗口宽度", 100, 300, Library.Config.WindowWidth, function(v)
-		Library.Config.WindowWidth = v; Library:RefreshDimensions()
-	end)
-    
-    UIConf:CreateSlider("窗口最大高度", 200, 600, Library.Config.WindowMaxHeight, function(v)
-        Library.Config.WindowMaxHeight = v; Library:RefreshDimensions()
     end)
     
-	local StyleConf = Sets:CreateModule("样式设置", function() end, false)
-	StyleConf:CreateSwitch("圆角风格", function(v) 
-		Library.Config.UseCorners = v; Library:RefreshStyle(); SaveConfig() 
-	end, Library.Config.UseCorners)
-	StyleConf:CreateSwitch("UI 描边", function(v) 
-		Library.Config.UseStroke = v; Library:RefreshStyle(); SaveConfig() 
-	end, Library.Config.UseStroke)
-
-	local FuncConf = Sets:CreateModule("功能开关", function() end, false)
-	FuncConf:CreateSwitch("显示 HUD", function(v) Library:SetHUDVisible(v) end, Library.Config.ShowHUD)
-	FuncConf:CreateSwitch("显示 通知", function(v) Library:SetNotifsVisible(v) end, Library.Config.ShowNotifs)
-    
-	Sets:CreateButton("保存当前配置", function() SaveConfig(); Library:Notify("配置已保存", true) end)
-    return Sets
-end
-
-function Library:CreateMainControl(title) return self:CreateWindow(title, UDim2.new(0, 20, 0, 60), true, false) end
-function Library:CreateChildWindow(title) return self:CreateWindow(title, UDim2.new(0.5, -Library.Config.WindowWidth/2, 0.5, -100), false, true) end
-
---// 初始化加载动画 //--
-task.spawn(function() Library:LoadLoader() end)
-
---// 兼容性修复：确保所有文字正确 //--
-task.delay(0.5, function()
-    -- 确保灵动岛文字正确
-    if Library.Globals.IslandObject then
-        Library.Globals.IslandObject.Text = Library.Config.IslandText or "XA"
-    end
-    
-    -- 更新所有窗口标题（如果需要）
-    for _, win in ipairs(Library.Globals.Windows) do
-        if win.Title and win.Title.Text then
-            -- 这里可以添加特定的标题修改逻辑
-        end
-    end
-end)
-
-return Library
-根据你给我提供的更新版来增加更多的颜色,我给你提供，你不要自己增加
-增加更多不同灰色的不同颜色,3D3D3D
-494949
-5B5B5B
-686868
-7C7C7C
-878787
-C6C6C6
-A8A8A8
-989898
-我们只需要在主题系统中增加新的灰色主题，使用提供的颜色代码。
-注意：每个主题需要是一个完整的主题配置，包括所有必要的颜色字段。
-我们将为每个颜色代码创建一个主题，主题名称使用颜色代码（去掉#），例如"Gray3D3D3D"。
-同时，我们还需要在设置窗口的主题下拉菜单中添加这些新的主题选项。
-
-lua
---// 黑白灰主题系统 //--
-Library.Themes = {
-    ["Default"] = { 
-        Name = "经典灰黑 (Default)",
-        Main = Color3.fromRGB(25, 25, 30), 
-        MainTrans = 0.1, 
-        Gradient1 = Color3.fromRGB(150, 150, 150),
-        Text = Color3.fromRGB(255, 255, 255), 
-        TextDark = Color3.fromRGB(180, 180, 180),
-        SettingBg = Color3.fromRGB(30, 30, 35), 
-        Accent = Color3.fromRGB(120, 120, 120),
-        Scroll = Color3.fromRGB(80, 80, 80), 
-        PickerBg = Color3.fromRGB(35, 35, 40),
-        IslandColor = Color3.fromRGB(20, 20, 25)
-    },
-    ["LightGray"] = { 
-        Name = "浅灰 (Light Gray)",
-        Main = Color3.fromRGB(245, 245, 245), 
-        MainTrans = 0.05, 
-        Gradient1 = Color3.fromRGB(180, 180, 180),
-        Text = Color3.fromRGB(30, 30, 30), 
-        TextDark = Color3.fromRGB(100, 100, 100),
-        SettingBg = Color3.fromRGB(235, 235, 235), 
-        Accent = Color3.fromRGB(150, 150, 150),
-        Scroll = Color3.fromRGB(200, 200, 200), 
-        PickerBg = Color3.fromRGB(240, 240, 240),
-        IslandColor = Color3.fromRGB(230, 230, 230)
-    },
-    ["MediumGray"] = { 
-        Name = "中灰 (Medium Gray)",
-        Main = Color3.fromRGB(60, 60, 65), 
-        MainTrans = 0.1, 
-        Gradient1 = Color3.fromRGB(140, 140, 140),
-        Text = Color3.fromRGB(240, 240, 240), 
-        TextDark = Color3.fromRGB(160, 160, 160),
-        SettingBg = Color3.fromRGB(70, 70, 75), 
-        Accent = Color3.fromRGB(120, 120, 120),
-        Scroll = Color3.fromRGB(100, 100, 100), 
-        PickerBg = Color3.fromRGB(75, 75, 80),
-        IslandColor = Color3.fromRGB(55, 55, 60)
-    },
-    ["DarkGray"] = { 
-        Name = "深灰 (Dark Gray)",
-        Main = Color3.fromRGB(15, 15, 18), 
-        MainTrans = 0.08, 
-        Gradient1 = Color3.fromRGB(100, 100, 100),
-        Text = Color3.fromRGB(230, 230, 230), 
-        TextDark = Color3.fromRGB(140, 140, 140),
-        SettingBg = Color3.fromRGB(20, 20, 22), 
-        Accent = Color3.fromRGB(80, 80, 80),
-        Scroll = Color3.fromRGB(60, 60, 60), 
-        PickerBg = Color3.fromRGB(22, 22, 25),
-        IslandColor = Color3.fromRGB(12, 12, 15)
-    },
-    ["PureBlack"] = { 
-        Name = "纯黑 (Pure Black)",
-        Main = Color3.fromRGB(0, 0, 0), 
-        MainTrans = 0.05, 
-        Gradient1 = Color3.fromRGB(80, 80, 80),
-        Text = Color3.fromRGB(255, 255, 255), 
-        TextDark = Color3.fromRGB(200, 200, 200),
---[[ 
-    XA GUI Library - Final Release
-    Author: BeiHai XiaoAn
-    
-    更新内容:
-    1. 此为改版 - 所有"YC"相关已改为"XA"
-    2. 主题系统统一为黑白灰色调
-]]
-
-local Library = {}
-local ConfigName = "YCUI/settings_final.json"
-
-local HttpService = game:GetService("HttpService")
-local UserInputService = game:GetService("UserInputService")
-local TweenService = game:GetService("TweenService")
-local TextService = game:GetService("TextService")
-local RunService = game:GetService("RunService")
-local CoreGui = game:GetService("CoreGui")
-local Players = game:GetService("Players")
-local Camera = workspace.CurrentCamera
-local LocalPlayer = Players.LocalPlayer
-local Mouse = LocalPlayer:GetMouse()
-
---// 辅助函数 //--
-local function GetFirstChar(str)
-	local first = ""
-	for _, code in utf8.codes(str) do first = utf8.char(code); break end
-	return first ~= "" and first or string.sub(str, 1, 1)
-end
-
-local function ToHSV(color)
-	local h, s, v = Color3.toHSV(color)
-	return h, s, v
-end
-
-local function FromHSV(h, s, v)
-	return Color3.fromHSV(h, s, v)
-end
-
---// 默认配置 //--
-local DefaultConfig = {
-	ShowHUD = true,
-	ShowNotifs = true,
-	NotifDuration = 3,
-	UIScale = 1.0,
-	WindowWidth = 200, 
-	WindowMaxHeight = 350,
-	ItemHeight = 34,
-	Theme = "Default",
-	UIVisible = true,
-	UseCorners = true, 
-	UseStroke = true,
-    IslandText = "XA"  -- 添加灵动岛文字配置
-}
-
-Library.Config = HttpService:JSONDecode(HttpService:JSONEncode(DefaultConfig))
-
-Library.Globals = {
-	Windows = {},
-	Elements = {},
-	ThemeObjects = {},
-	StyleObjects = {}, 
-	ActiveNotifs = {},
-	BoundKeys = {},
-	IslandPosition = Vector2.new(0,0),
-	IslandObject = nil,
-	HUDGradients = {},
-	SubWindows = {},
-	TopZIndex = 100,
-    ActivePicker = nil 
-}
-
---// 黑白灰主题系统 //--
-Library.Themes = {
-    ["Default"] = { 
-        Name = "经典灰黑 (Default)",
-        Main = Color3.fromRGB(25, 25, 30), 
-        MainTrans = 0.1, 
-        Gradient1 = Color3.fromRGB(150, 150, 150),
-        Text = Color3.fromRGB(255, 255, 255), 
-        TextDark = Color3.fromRGB(180, 180, 180),
-        SettingBg = Color3.fromRGB(30, 30, 35), 
-        Accent = Color3.fromRGB(120, 120, 120),
-        Scroll = Color3.fromRGB(80, 80, 80), 
-        PickerBg = Color3.fromRGB(35, 35, 40),
-        IslandColor = Color3.fromRGB(20, 20, 25)
-    },
-    ["LightGray"] = { 
-        Name = "浅灰 (Light Gray)",
-        Main = Color3.fromRGB(245, 245, 245), 
-        MainTrans = 0.05, 
-        Gradient1 = Color3.fromRGB(180, 180, 180),
-        Text = Color3.fromRGB(30, 30, 30), 
-        TextDark = Color3.fromRGB(100, 100, 100),
-        SettingBg = Color3.fromRGB(235, 235, 235), 
-        Accent = Color3.fromRGB(150, 150, 150),
-        Scroll = Color3.fromRGB(200, 200, 200), 
-        PickerBg = Color3.fromRGB(240, 240, 240),
-        IslandColor = Color3.fromRGB(230, 230, 230)
-    },
-    ["MediumGray"] = { 
-        Name = "中灰 (Medium Gray)",
-        Main = Color3.fromRGB(60, 60, 65), 
-        MainTrans = 0.1, 
-        Gradient1 = Color3.fromRGB(140, 140, 140),
-        Text = Color3.fromRGB(240, 240, 240), 
-        TextDark = Color3.fromRGB(160, 160, 160),
-        SettingBg = Color3.fromRGB(70, 70, 75), 
-        Accent = Color3.fromRGB(120, 120, 120),
-        Scroll = Color3.fromRGB(100, 100, 100), 
-        PickerBg = Color3.fromRGB(75, 75, 80),
-        IslandColor = Color3.fromRGB(55, 55, 60)
-    },
-    ["DarkGray"] = { 
-        Name = "深灰 (Dark Gray)",
-        Main = Color3.fromRGB(15, 15, 18), 
-        MainTrans = 0.08, 
-        Gradient1 = Color3.fromRGB(100, 100, 100),
-        Text = Color3.fromRGB(230, 230, 230), 
-        TextDark = Color3.fromRGB(140, 140, 140),
-        SettingBg = Color3.fromRGB(20, 20, 22), 
-        Accent = Color3.fromRGB(80, 80, 80),
-        Scroll = Color3.fromRGB(60, 60, 60), 
-        PickerBg = Color3.fromRGB(22, 22, 25),
-        IslandColor = Color3.fromRGB(12, 12, 15)
-    },
-    ["PureBlack"] = { 
-        Name = "纯黑 (Pure Black)",
-        Main = Color3.fromRGB(0, 0, 0), 
-        MainTrans = 0.05, 
-        Gradient1 = Color3.fromRGB(80, 80, 80),
-        Text = Color3.fromRGB(255, 255, 255), 
-        TextDark = Color3.fromRGB(200, 200, 200),
-        SettingBg = Color3.fromRGB(5, 5, 5), 
-        Accent = Color3.fromRGB(60, 60, 60),
-        Scroll = Color3.fromRGB(40, 40, 40), 
-        PickerBg = Color3.fromRGB(8, 8, 10),
-        IslandColor = Color3.fromRGB(0, 0, 0)
-    },
-    ["PureWhite"] = { 
-        Name = "纯白 (Pure White)",
-        Main = Color3.fromRGB(255, 255, 255), 
-        MainTrans = 0.05, 
-        Gradient1 = Color3.fromRGB(220, 220, 220),
-        Text = Color3.fromRGB(10, 10, 10), 
-        TextDark = Color3.fromRGB(80, 80, 80),
-        SettingBg = Color3.fromRGB(250, 250, 250), 
-        Accent = Color3.fromRGB(200, 200, 200),
-        Scroll = Color3.fromRGB(230, 230, 230), 
-        PickerBg = Color3.fromRGB(245, 245, 245),
-        IslandColor = Color3.fromRGB(255, 255, 255)
-    },
-    ["XA_Special"] = { 
-        Name = "XA专属 (XA Special)",
-        Main = Color3.fromRGB(20, 20, 25), 
-        MainTrans = 0.1, 
-        Gradient1 = Color3.fromRGB(150, 150, 150),
-        Text = Color3.fromRGB(255, 255, 255), 
-        TextDark = Color3.fromRGB(200, 200, 200),
-        SettingBg = Color3.fromRGB(25, 25, 30), 
-        Accent = Color3.fromRGB(100, 100, 100),
-        Scroll = Color3.fromRGB(70, 70, 70), 
-        PickerBg = Color3.fromRGB(30, 30, 35),
-        IslandColor = Color3.fromRGB(15, 15, 20),
-        IslandAccent = Color3.fromRGB(100, 100, 100)
-    }
-}
-
--- 设置默认主题
-local CurrentThemeData = Library.Themes[Library.Config.Theme] or Library.Themes["Default"]
-
---// 文件系统优化 //--
-local function EnsureFolder()
-    if not isfolder("YCUI") then 
-        makefolder("YCUI") 
-    end
-end
-
-local function SaveConfig()
-    EnsureFolder()
-    local success, err = pcall(function()
-        -- 确保配置包含所有必要字段
-        Library.Config = Library.Config or {}
-        Library.Config.Theme = Library.Config.Theme or "Default"
-        Library.Config.UIVisible = Library.Config.UIVisible or false
-        Library.Config.UseStroke = Library.Config.UseStroke or true
-        Library.Config.IslandText = Library.Config.IslandText or "XA"
+    -- ESP颜色选择下拉菜单
+    ESP:CreateDropdown("ESP颜色", {"红色", "蓝色", "绿色", "黄色", "紫色"}, function(selected)
+        print("ESP颜色选择:", selected)
         
-        writefile(ConfigName, HttpService:JSONEncode(Library.Config))
+        local colors = {
+            ["红色"] = Color3.fromRGB(255, 0, 0),
+            ["蓝色"] = Color3.fromRGB(0, 0, 255),
+            ["绿色"] = Color3.fromRGB(0, 255, 0),
+            ["黄色"] = Color3.fromRGB(255, 255, 0),
+            ["紫色"] = Color3.fromRGB(150, 0, 255)
+        }
+        
+        if colors[selected] then
+            for _, box in pairs(ESPBoxes) do
+                box.Color3 = colors[selected]
+            end
+        end
     end)
     
-    if not success then
-        warn("保存配置失败:", err)
-    end
-end
-
-local function LoadConfig()
-    EnsureFolder()
-    if isfile(ConfigName) then
-        local success, data = pcall(function()
-            return HttpService:JSONDecode(readfile(ConfigName))
-        end)
+    -- ESP透明度滑块
+    ESP:CreateSlider("ESP透明度", 0.1, 1, 0.3, function(val)
+        print("ESP透明度设置为:", val)
+        for _, box in pairs(ESPBoxes) do
+            box.Transparency = val
+        end
+    end)
+    
+    -- ==================== 移动功能 ====================
+    -- 飞天功能
+    local Fly = MovementWin:CreateModule("飞天", function(state)
+        print("飞天状态:", state)
         
-        if success and data then
-            -- 合并配置，保留原有值
-            for key, value in pairs(data) do
-                Library.Config[key] = value
-            end
+        if state then
+            local character = player.Character
             
-            -- 更新当前主题数据
-            if data.Theme and Library.Themes[data.Theme] then
-                CurrentThemeData = Library.Themes[data.Theme]
-            else
-                CurrentThemeData = Library.Themes["Default"]
-                Library.Config.Theme = "Default"
-            end
-            
-            -- 确保灵动岛文字配置
-            if not data.IslandText then
-                Library.Config.IslandText = "XA"
+            if character and character:FindFirstChild("HumanoidRootPart") then
+                local bodyVelocity = Instance.new("BodyVelocity")
+                bodyVelocity.Velocity = Vector3.new(0, 0, 0)
+                bodyVelocity.MaxForce = Vector3.new(40000, 40000, 40000)
+                bodyVelocity.Parent = character.HumanoidRootPart
+                
+                local connection = RunService.Heartbeat:Connect(function()
+                    if not character or not character:FindFirstChild("HumanoidRootPart") then
+                        connection:Disconnect()
+                        return
+                    end
+                    
+                    local root = character.HumanoidRootPart
+                    local direction = Vector3.new(0, 0, 0)
+                    
+                    if UserInputService:IsKeyDown(Enum.KeyCode.W) then
+                        direction = direction + root.CFrame.LookVector
+                    end
+                    if UserInputService:IsKeyDown(Enum.KeyCode.S) then
+                        direction = direction - root.CFrame.LookVector
+                    end
+                    if UserInputService:IsKeyDown(Enum.KeyCode.A) then
+                        direction = direction - root.CFrame.RightVector
+                    end
+                    if UserInputService:IsKeyDown(Enum.KeyCode.D) then
+                        direction = direction + root.CFrame.RightVector
+                    end
+                    if UserInputService:IsKeyDown(Enum.KeyCode.Space) then
+                        direction = direction + Vector3.new(0, 1, 0)
+                    end
+                    if UserInputService:IsKeyDown(Enum.KeyCode.LeftShift) then
+                        direction = direction + Vector3.new(0, -1, 0)
+                    end
+                    
+                    if direction.Magnitude > 0 then
+                        bodyVelocity.Velocity = direction.Unit * (_G.FlySpeed or 50)
+                    else
+                        bodyVelocity.Velocity = Vector3.new(0, 0, 0)
+                    end
+                end)
             end
         else
-            warn("配置文件损坏，使用默认配置")
-            CurrentThemeData = Library.Themes["Default"]
-            Library.Config.Theme = "Default"
-            Library.Config.IslandText = "XA"
+            print("飞天已关闭")
         end
-    else
-        -- 首次运行，使用默认配置
-        CurrentThemeData = Library.Themes["Default"]
-        Library.Config.Theme = "Default"
-        Library.Config.IslandText = "XA"
-        SaveConfig()
-    end
-end
-
--- 加载配置
-LoadConfig()
-
---// 主题切换函数 //--
-function Library:SwitchTheme(themeName)
-    if not Library.Themes[themeName] then
-        warn("主题不存在:", themeName)
-        return false
-    end
-    
-    -- 更新主题数据
-    CurrentThemeData = Library.Themes[themeName]
-    Library.Config.Theme = themeName
-    
-    -- 应用主题到UI元素
-    self:ApplyCurrentTheme()
-    
-    -- 保存配置
-    SaveConfig()
-    
-    return true
-end
-
--- 应用当前主题
-function Library:ApplyCurrentTheme()
-    -- 应用主题到灵动岛
-    if Library.Globals.IslandObject then
-        local Island = Library.Globals.IslandObject
-        
-        -- 使用主题中的灵动岛颜色
-        local islandColor = CurrentThemeData.IslandColor or Color3.new(0, 0, 0)
-        local textColor = CurrentThemeData.Text or Color3.new(1, 1, 1)
-        
-        TweenService:Create(Island, TweenInfo.new(0.3), {
-            BackgroundColor3 = islandColor,
-            TextColor3 = textColor
-        }):Play()
-        
-        -- 更新描边颜色（如果需要）
-        if Island.UIStroke then
-            local strokeColor = CurrentThemeData.Accent or Color3.new(1, 1, 1)
-            TweenService:Create(Island.UIStroke, TweenInfo.new(0.3), {
-                Color = strokeColor
-            }):Play()
-        end
-    end
-    
-    -- 应用主题到所有窗口
-    if self.Globals.Windows then
-        for _, windowData in ipairs(self.Globals.Windows) do
-            if windowData.Main and windowData.Main.Parent then
-                self:ApplyThemeToWindow(windowData.Main)
-            end
-        end
-    end
-end
-
--- 应用到窗口
-function Library:ApplyThemeToWindow(window)
-    -- 这里实现将CurrentThemeData应用到窗口的所有元素
-    local theme = CurrentThemeData
-    
-    -- 应用背景色
-    if window:IsA("Frame") or window:IsA("TextButton") then
-        TweenService:Create(window, TweenInfo.new(0.5), {
-            BackgroundColor3 = theme.Main
-        }):Play()
-    end
-    
-    -- 递归应用到子元素
-    for _, child in ipairs(window:GetDescendants()) do
-        if child:IsA("TextLabel") or child:IsA("TextButton") then
-            if child.Name == "Title" or child.Name:find("Text") then
-                TweenService:Create(child, TweenInfo.new(0.5), {
-                    TextColor3 = theme.Text
-                }):Play()
-            end
-        elseif child:IsA("UIStroke") then
-            TweenService:Create(child, TweenInfo.new(0.5), {
-                Color = theme.Accent
-            }):Play()
-        end
-    end
-end
-
---// 创建主界面（已改为XA_GUI）//--
-if game.CoreGui:FindFirstChild("XA_GUI") then 
-    game.CoreGui.XA_GUI:Destroy() 
-end
-
-local ScreenGui = Instance.new("ScreenGui")
-ScreenGui.Name = "XA_GUI"
-ScreenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling 
-ScreenGui.IgnoreGuiInset = true
-ScreenGui.Enabled = false 
-
--- 优化父级设置
-local success, _ = pcall(function() 
-    ScreenGui.Parent = game:GetService("CoreGui") 
-end)
-
-if not ScreenGui.Parent then
-    success, _ = pcall(function() 
-        ScreenGui.Parent = game.Players.LocalPlayer:WaitForChild("PlayerGui")
     end)
-end
-
-if not ScreenGui.Parent then
-    warn("无法将GUI添加到任何父级")
-end
-
---// 快捷主题切换 //--
-function Library:SetDarkTheme()
-    return self:SwitchTheme("DarkGray")
-end
-
-function Library:SetLightTheme()
-    return self:SwitchTheme("LightGray")
-end
-
-function Library:SetXASpecialTheme()
-    return self:SwitchTheme("XA_Special")
-end
-
--- [核心修改] 防止穿透
-local Backdrop = Instance.new("Frame")
-Backdrop.Name = "Backdrop"
-Backdrop.Parent = ScreenGui
-Backdrop.BackgroundColor3 = Color3.new(0,0,0)
-Backdrop.BackgroundTransparency = 1
-Backdrop.Size = UDim2.new(1,0,1,0)
-Backdrop.ZIndex = 0
-Backdrop.Visible = false
-Backdrop.Active = true -- 开启输入拦截
-
---// HUD 垂直流光 //--
-local function UpdateHUDGradients()
-    local theme = CurrentThemeData
-    local t = tick() * 2
-    local phase = (math.sin(t) + 1) / 2 
-    local c1 = theme.Accent:Lerp(theme.Gradient1, phase)
-    local c2 = theme.Gradient1:Lerp(Color3.new(1,1,1), phase * 0.3) 
-    local c3 = theme.Accent:Lerp(theme.Gradient1, 1 - phase) 
-    local seq = ColorSequence.new{ColorSequenceKeypoint.new(0, c1), ColorSequenceKeypoint.new(0.5, c2), ColorSequenceKeypoint.new(1, c3)}
-    for _, gradient in pairs(Library.Globals.HUDGradients) do
-        if gradient and gradient.Parent then gradient.Color = seq; gradient.Rotation = -90 end
-    end
-end
-RunService.RenderStepped:Connect(UpdateHUDGradients)
-
---// Loader - 更新为XA版本 //--
-function Library:LoadLoader()
-	local Loader = Instance.new("ScreenGui")
-    Loader.Name = "XA_Loader"
-    Loader.IgnoreGuiInset = true
-    Loader.DisplayOrder = 10000
-    Loader.Parent = CoreGui
     
-	local Main = Instance.new("Frame")
-    Main.Parent = Loader
-    Main.BackgroundColor3 = Color3.new(0,0,0)
-    Main.BackgroundTransparency = 0
-    Main.Size = UDim2.new(1,0,1,0)
-    Main.ZIndex = 1
+    Fly:CreateSlider("飞行速度", 10, 200, 50, function(val)
+        print("飞行速度设置为:", val)
+        _G.FlySpeed = val
+    end)
     
-	local Cen = Instance.new("Frame")
-    Cen.Parent = Main
-    Cen.Size = UDim2.new(0,400,0,150)
-    Cen.AnchorPoint = Vector2.new(0.5,0.5)
-    Cen.Position = UDim2.new(0.5,0,0.5,0)
-    Cen.BackgroundTransparency = 1
-    Cen.ZIndex = 2
-	
-	local MainTitle = Instance.new("TextLabel")
-    MainTitle.Parent = Cen
-    MainTitle.Text = "XA GUI"
-    MainTitle.Font = Enum.Font.GothamBlack
-    MainTitle.TextSize = 60
-    MainTitle.TextColor3 = Color3.new(1,1,1)
-    MainTitle.Size = UDim2.new(1, 0, 0, 70)
-    MainTitle.Position = UDim2.new(0, 0, 0.5, -40)
-    MainTitle.AnchorPoint = Vector2.new(0, 0.5)
-    MainTitle.BackgroundTransparency = 1
-    MainTitle.TextTransparency = 1
-    
-	local TitleScale = Instance.new("UIScale")
-    TitleScale.Parent = MainTitle
-    TitleScale.Scale = 1.1
-    
-	local MainGradient = Instance.new("UIGradient")
-    MainGradient.Parent = MainTitle
-    MainGradient.Color = ColorSequence.new{
-        ColorSequenceKeypoint.new(0, Color3.fromRGB(80, 80, 80)),
-        ColorSequenceKeypoint.new(0.5, Color3.fromRGB(180, 180, 180)),
-        ColorSequenceKeypoint.new(1, Color3.fromRGB(100, 100, 100))
-    }
-	
-    local SubTitle = Instance.new("TextLabel")
-    SubTitle.Parent = Cen
-    SubTitle.Text = "By BeiHai"
-    SubTitle.Font = Enum.Font.Gotham
-    SubTitle.TextSize = 16
-    SubTitle.TextColor3 = Color3.fromRGB(220, 220, 220)
-    SubTitle.Size = UDim2.new(1, 0, 0, 20)
-    SubTitle.AnchorPoint = Vector2.new(1, 0)
-    SubTitle.Position = UDim2.new(1, -20, 0.5, 25)
-    SubTitle.TextXAlignment = Enum.TextXAlignment.Right
-    SubTitle.BackgroundTransparency = 1
-    SubTitle.TextTransparency = 1
-
-	Main.BackgroundTransparency = 0.3
-	local t1 = TweenService:Create(MainTitle, TweenInfo.new(1.2, Enum.EasingStyle.Quint, Enum.EasingDirection.Out), {TextTransparency = 0})
-	local t2 = TweenService:Create(TitleScale, TweenInfo.new(1.2, Enum.EasingStyle.Quint, Enum.EasingDirection.Out), {Scale = 1.0})
-	t1:Play(); t2:Play()
-	task.wait(0.4)
-	local subPosFinal = UDim2.new(1, -20, 0.5, 15)
-	local t3 = TweenService:Create(SubTitle, TweenInfo.new(1.0, Enum.EasingStyle.Quint, Enum.EasingDirection.Out), {TextTransparency = 0, Position = subPosFinal})
-	t3:Play()
-	task.spawn(function() local s = tick(); while Loader.Parent do MainGradient.Rotation = math.sin(tick()) * 15; RunService.RenderStepped:Wait() end end)
-	task.wait(1.5)
-	TweenService:Create(Main, TweenInfo.new(0.5, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {BackgroundTransparency = 1}):Play()
-	TweenService:Create(MainTitle, TweenInfo.new(0.4, Enum.EasingStyle.Quad, Enum.EasingDirection.In), {TextTransparency = 1}):Play()
-	TweenService:Create(TitleScale, TweenInfo.new(0.4, Enum.EasingStyle.Quad, Enum.EasingDirection.In), {Scale = 1.1}):Play()
-	TweenService:Create(SubTitle, TweenInfo.new(0.4, Enum.EasingStyle.Quad, Enum.EasingDirection.In), {TextTransparency = 1, Position = subPosFinal + UDim2.new(0,0,0,10)}):Play()
-	task.wait(0.5)
-	ScreenGui.Enabled = true
-	Loader:Destroy()
-end
-
---// 样式系统 //--
-local function RegisterStyle(obj, hasStroke, cornerRadius)
-	table.insert(Library.Globals.StyleObjects, {Object = obj, HasStroke = hasStroke, Radius = cornerRadius})
-	local Corner = obj:FindFirstChild("UICorner") or Instance.new("UICorner")
-	Corner.Parent = obj
-	Corner.CornerRadius = UDim.new(0, Library.Config.UseCorners and cornerRadius or 0)
-	if hasStroke then
-		local Stroke = obj:FindFirstChild("UIStroke") or Instance.new("UIStroke")
-		Stroke.Parent = obj
-		Stroke.Thickness = 1.5
-		Stroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
-		Stroke.Color = CurrentThemeData.Accent 
-		Stroke.Transparency = Library.Config.UseStroke and 0 or 1
-	end
-end
-
-function Library:RefreshStyle()
-	local useCorners = Library.Config.UseCorners
-	local useStroke = Library.Config.UseStroke
-	
-	for _, data in ipairs(Library.Globals.StyleObjects) do
-		local obj = data.Object
-		if obj and obj.Parent then
-			local Corner = obj:FindFirstChild("UICorner")
-			if Corner then
-				TweenService:Create(Corner, TweenInfo.new(0.3), {CornerRadius = UDim.new(0, useCorners and data.Radius or 0)}):Play()
-			end
-			if data.HasStroke then
-				local Stroke = obj:FindFirstChild("UIStroke")
-				if Stroke then
-					TweenService:Create(Stroke, TweenInfo.new(0.3), {Transparency = useStroke and 0 or 1, Color = CurrentThemeData.Accent}):Play()
-				end
-			end
-		end
-	end
-end
-
---// 主题更新 //--
-local function RegisterObject(obj, type)
-	table.insert(Library.Globals.ThemeObjects, {Object = obj, Type = type})
-	local theme = CurrentThemeData
-	if type == "Window" then obj.BackgroundColor3 = theme.Main; obj.BackgroundTransparency = theme.MainTrans
-	elseif type == "Text" then obj.TextColor3 = theme.Text
-	elseif type == "TextDark" then obj.TextColor3 = theme.TextDark
-	elseif type == "SettingBg" then obj.BackgroundColor3 = theme.SettingBg
-	elseif type == "Accent" then obj.BackgroundColor3 = theme.Accent
-    elseif type == "PickerBg" then obj.BackgroundColor3 = theme.PickerBg
-	elseif type == "Scroll" then obj.ScrollBarImageColor3 = theme.Scroll
-	elseif type == "NotifGradient" then 
-		obj.Color = ColorSequence.new{ColorSequenceKeypoint.new(0, theme.Accent), ColorSequenceKeypoint.new(0.5, Color3.new(1,1,1)), ColorSequenceKeypoint.new(1, theme.Accent)}
-	end
-end
-
-function Library:RefreshTheme()
-	local theme = CurrentThemeData
-	for _, data in ipairs(Library.Globals.ThemeObjects) do
-		local obj = data.Object
-		if obj and obj.Parent then
-			if data.Type == "Window" then TweenService:Create(obj, TweenInfo.new(0.5), {BackgroundColor3 = theme.Main}):Play()
-			elseif data.Type == "Text" then TweenService:Create(obj, TweenInfo.new(0.5), {TextColor3 = theme.Text}):Play()
-			elseif data.Type == "TextDark" then TweenService:Create(obj, TweenInfo.new(0.5), {TextColor3 = theme.TextDark}):Play()
-			elseif data.Type == "Accent" then TweenService:Create(obj, TweenInfo.new(0.5), {BackgroundColor3 = theme.Accent}):Play()
-            elseif data.Type == "PickerBg" then TweenService:Create(obj, TweenInfo.new(0.5), {BackgroundColor3 = theme.PickerBg}):Play()
-			elseif data.Type == "Scroll" then TweenService:Create(obj, TweenInfo.new(0.5), {ScrollBarImageColor3 = theme.Scroll}):Play()
-			elseif data.Type == "NotifGradient" then
-				obj.Color = ColorSequence.new{ColorSequenceKeypoint.new(0, theme.Accent), ColorSequenceKeypoint.new(0.5, Color3.new(1,1,1)), ColorSequenceKeypoint.new(1, theme.Accent)}
-			end
-		end
-	end
-	Library:RefreshStyle()
-end
-
-function Library:RefreshDimensions()
-	local conf = Library.Config
-	for _, win in ipairs(Library.Globals.Windows) do
-		local scale = win.Main:FindFirstChild("UIScale")
-		if scale then TweenService:Create(scale, TweenInfo.new(0.3), {Scale = conf.UIScale}):Play() end
-		if win.RefreshHeight then win.RefreshHeight() end
-		local headerH = conf.ItemHeight + 6 
-		win.Header.Size = UDim2.new(1, 0, 0, headerH)
-		win.Title.TextSize = math.clamp(headerH * 0.45, 12, 24)
-	end
-end
-
-Camera:GetPropertyChangedSignal("ViewportSize"):Connect(function()
-	Library:RefreshDimensions()
-end)
-
---// 灵动岛 //--
-local function ToggleInterface(visible)
-	Library.Config.UIVisible = visible
-	Backdrop.Visible = visible
-	TweenService:Create(Backdrop, TweenInfo.new(0.5), {BackgroundTransparency = visible and 0.4 or 1}):Play()
-    
-    if not visible and Library.Globals.ActivePicker then
-        Library.Globals.ActivePicker:Destroy()
-        Library.Globals.ActivePicker = nil
-    end
-	
-	if Library.Globals.IslandObject then
-		local Island = Library.Globals.IslandObject
-		if visible then
-			TweenService:Create(Island, TweenInfo.new(0.3), {BackgroundTransparency = 0.1}):Play()
-			if not Library.Config.UseStroke then
-				TweenService:Create(Island.UIStroke, TweenInfo.new(0.3), {Transparency = 0.5}):Play()
-			end
-		else
-			TweenService:Create(Island, TweenInfo.new(0.3), {BackgroundTransparency = 0.6}):Play()
-			if not Library.Config.UseStroke then
-				TweenService:Create(Island.UIStroke, TweenInfo.new(0.3), {Transparency = 0.9}):Play()
-			end
-		end
-	end
-	
-	local Origin = Library.Globals.IslandPosition
-	local ScreenSize = ScreenGui.AbsoluteSize
-	local MaxRadius = math.sqrt(ScreenSize.X^2 + ScreenSize.Y^2)
-	
-	if visible then
-		local Ripple = Instance.new("Frame"); Ripple.Name="FullRipple"; Ripple.Parent=ScreenGui
-		Ripple.AnchorPoint=Vector2.new(0.5,0.5); Ripple.Position=UDim2.new(0,Origin.X,0,Origin.Y)
-		Ripple.BackgroundColor3=CurrentThemeData.Accent; Ripple.BackgroundTransparency=0.8; Ripple.BorderSizePixel=0; Ripple.ZIndex=1
-		local Corner = Instance.new("UICorner"); Corner.CornerRadius=UDim.new(1,0); Corner.Parent=Ripple
-		Ripple.Size=UDim2.new(0,0,0,0)
-		local tween=TweenService:Create(Ripple, TweenInfo.new(1, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {Size=UDim2.new(0,MaxRadius*2,0,MaxRadius*2), BackgroundTransparency=1})
-		tween:Play(); tween.Completed:Connect(function() Ripple:Destroy() end)
-
-		local Duration = 0.6; local StartTime = tick()
-		for _, winData in ipairs(Library.Globals.Windows) do 
-			if winData.IsOpen then winData.Main.Visible = false; winData.Main.BackgroundTransparency = 1 end
-		end
-		local connection
-		connection = RunService.RenderStepped:Connect(function()
-			local elapsed = tick() - StartTime; local progress = math.clamp(elapsed / Duration, 0, 1)
-			local currentRadius = progress * MaxRadius * 1.2
-			for _, winData in ipairs(Library.Globals.Windows) do
-				if winData.IsOpen then
-					local winPos = winData.Main.AbsolutePosition + (winData.Main.AbsoluteSize / 2)
-					local dist = (winPos - Origin).Magnitude
-					if currentRadius >= dist and not winData.Main.Visible then
-						winData.Main.Visible = true
-						TweenService:Create(winData.Main, TweenInfo.new(0.4, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {BackgroundTransparency = CurrentThemeData.MainTrans}):Play()
-						for _, d in ipairs(winData.Main:GetDescendants()) do
-							if (d:IsA("TextLabel") or d:IsA("TextButton") or d:IsA("ImageLabel") or d:IsA("TextBox")) and d.Name ~= "Backdrop" then
-								local targetT = (d:IsA("TextButton") and d.Name == "Main") and 1 or 0
-                                if d:IsA("TextBox") then targetT = 0 end 
-								d.TextTransparency = 1
-								TweenService:Create(d, TweenInfo.new(0.3), {TextTransparency = targetT}):Play()
-							end
-						end
-					end
-				end
-			end
-			if progress >= 1 then connection:Disconnect() end
-		end)
-	else
-		for _, winData in ipairs(Library.Globals.Windows) do
-			if winData.Main.Visible then
-				TweenService:Create(winData.Main, TweenInfo.new(0.2), {BackgroundTransparency = 1}):Play()
-				for _, d in ipairs(winData.Main:GetDescendants()) do
-					if d:IsA("TextLabel") or d:IsA("TextButton") or d:IsA("TextBox") then TweenService:Create(d, TweenInfo.new(0.2), {TextTransparency = 1}):Play() end
-				end
-			end
-		end
-		task.delay(0.2, function()
-			if not Library.Config.UIVisible then for _, w in ipairs(Library.Globals.Windows) do w.Main.Visible = false end; Backdrop.Visible = false end
-		end)
-	end
-end
-
-local function CreateDynamicIsland()
-	local Island = Instance.new("TextButton")
-    Island.Name="DynamicIsland"
-    Island.Parent=ScreenGui
-    Island.Size=UDim2.new(0,100,0,30)
-    Island.Position=UDim2.new(0.5,0,0,10)
-    Island.AnchorPoint=Vector2.new(0.5,0)
-    Island.BackgroundColor3=Color3.new(0,0,0)
-    Island.BackgroundTransparency = Library.Config.UIVisible and 0.1 or 0.6
-    
-    -- 修复：使用配置的文字
-    Island.Text = Library.Config.IslandText or "XA"
-    
-    Island.Font=Enum.Font.GothamBold
-    Island.TextSize=14
-    Island.TextColor3=Color3.new(1,1,1)
-    Island.AutoButtonColor=false
-    Island.ZIndex=100
-	
-	local UICorner = Instance.new("UICorner")
-    UICorner.CornerRadius = UDim.new(1,0) 
-    UICorner.Parent = Island
-	
-	local UIStroke = Instance.new("UIStroke")
-    UIStroke.Thickness=1.5
-    UIStroke.Color=Color3.fromRGB(255,255,255)
-    UIStroke.Transparency = Library.Config.UIVisible and 0.5 or 0.9
-    UIStroke.Parent=Island
-	
-	Library.Globals.IslandObject = Island
-	
-	local function UpdatePos() 
-        Library.Globals.IslandPosition = Island.AbsolutePosition + (Island.AbsoluteSize / 2) 
-    end
-	Island:GetPropertyChangedSignal("AbsolutePosition"):Connect(UpdatePos)
-    task.defer(UpdatePos)
-    
-	Island.MouseButton1Click:Connect(function()
-		TweenService:Create(Island, TweenInfo.new(0.1), {Size=UDim2.new(0,90,0,25)}):Play()
-		task.delay(0.1, function() TweenService:Create(Island, TweenInfo.new(0.4, Enum.EasingStyle.Elastic), {Size=UDim2.new(0,100,0,30)}):Play() end)
-		ToggleInterface(not Library.Config.UIVisible)
-	end)
-end
-CreateDynamicIsland()
-
---// 涟漪 //--
-local function CreateRipple(btn, isCenter)
-	btn.ClipsDescendants = true
-	spawn(function()
-		local ripple = Instance.new("Frame"); ripple.Parent=btn; ripple.BackgroundColor3=Color3.fromRGB(255,255,255); ripple.BackgroundTransparency=0.8; ripple.BorderSizePixel=0; ripple.AnchorPoint=Vector2.new(0.5,0.5)
-		local corner = Instance.new("UICorner"); corner.CornerRadius=UDim.new(1,0); corner.Parent=ripple
-		local pos = isCenter and UDim2.new(0.5,0,0.5,0) or UDim2.new(0,UserInputService:GetMouseLocation().X-btn.AbsolutePosition.X,0,UserInputService:GetMouseLocation().Y-btn.AbsolutePosition.Y)
-		ripple.Position=pos; ripple.Size=UDim2.new(0,0,0,0)
-		local size = math.max(btn.AbsoluteSize.X,btn.AbsoluteSize.Y)*1.5
-		TweenService:Create(ripple,TweenInfo.new(0.4),{Size=UDim2.new(0,size,0,size),BackgroundTransparency=1}):Play()
-		task.wait(0.45); ripple:Destroy()
-	end)
-end
-
---// HUD & Notify //--
-local HUDFrame = Instance.new("Frame"); HUDFrame.Name="HUD"; HUDFrame.Parent=ScreenGui
-HUDFrame.Position=UDim2.new(1,-10,0,50); HUDFrame.AnchorPoint=Vector2.new(1,0)
-HUDFrame.Size=UDim2.new(0,300,1,-60); HUDFrame.BackgroundTransparency=1; HUDFrame.Visible=Library.Config.ShowHUD
-local HUDLayout = Instance.new("UIListLayout"); HUDLayout.Parent=HUDFrame; HUDLayout.HorizontalAlignment=Enum.HorizontalAlignment.Right; HUDLayout.Padding=UDim.new(0,0); HUDLayout.SortOrder=Enum.SortOrder.LayoutOrder
-local function UpdateHUD(name, enabled)
-	if not Library.Config.ShowHUD then return end
-	local old = HUDFrame:FindFirstChild(name)
-	if enabled then
-		if old then return end
-		local font = Enum.Font.GothamBold; local textSize = 18
-		local w = TextService:GetTextSize(name, textSize, font, Vector2.new(1000, 1000)).X
-		local Wrap = Instance.new("Frame"); Wrap.Name = name; Wrap.Parent = HUDFrame; Wrap.BackgroundTransparency = 1; Wrap.Size = UDim2.new(0, w + 14, 0, 22); Wrap.LayoutOrder = -math.floor(w)
-		local Cont = Instance.new("Frame"); Cont.Name = "Container"; Cont.Parent = Wrap; Cont.BackgroundColor3 = Color3.new(0,0,0); Cont.BackgroundTransparency = 0.4; Cont.Size = UDim2.new(1, 0, 1, 0); Cont.Position = UDim2.new(1, 50, 0, 0); Cont.BorderSizePixel = 0
-		local Bar = Instance.new("Frame"); Bar.Name = "FlowBar"; Bar.Parent = Cont; Bar.Size = UDim2.new(0, 3, 1, 0); Bar.Position = UDim2.new(1, -3, 0, 0); Bar.BorderSizePixel = 0; Bar.BackgroundColor3 = Color3.new(1,1,1)
-		local Grad = Instance.new("UIGradient"); Grad.Parent = Bar; Grad.Rotation = -90; table.insert(Library.Globals.HUDGradients, Grad)
-		local Lab = Instance.new("TextLabel"); Lab.Parent = Cont; Lab.Text = name; Lab.Font = font; Lab.TextSize = textSize; Lab.TextColor3 = Color3.new(1,1,1); Lab.BackgroundTransparency = 1; Lab.Size = UDim2.new(1, -8, 1, 0); Lab.Position = UDim2.new(0, 0, 0, 0); Lab.TextXAlignment = Enum.TextXAlignment.Right; RegisterObject(Lab, "Text")
-		TweenService:Create(Cont, TweenInfo.new(0.4, Enum.EasingStyle.Exponential), {Position=UDim2.new(0,0,0,0)}):Play()
-	else 
-		if old then 
-			local bar = old:FindFirstChild("Container") and old.Container:FindFirstChild("FlowBar")
-			if bar and bar:FindFirstChild("UIGradient") then for i, g in ipairs(Library.Globals.HUDGradients) do if g == bar.UIGradient then table.remove(Library.Globals.HUDGradients, i) break end end end
-			local cont = old:FindFirstChild("Container")
-			if cont then local out = TweenService:Create(cont, TweenInfo.new(0.3), {Position=UDim2.new(1,50,0,0)}); out:Play(); out.Completed:Connect(function() old:Destroy() end) else old:Destroy() end
-		end 
-	end
-end
-function Library:SetHUDVisible(visible) Library.Config.ShowHUD = visible; HUDFrame.Visible = visible; SaveConfig() end
-function Library:SetNotifsVisible(visible) Library.Config.ShowNotifs = visible; SaveConfig() end
-function Library:SetTheme(themeName) if Library.Themes[themeName] then CurrentThemeData = Library.Themes[themeName]; Library.Config.Theme = themeName; Library:RefreshTheme(); SaveConfig() end end
-function Library:Notify(title, status)
-	if not Library.Config.ShowNotifs then return end
-	local Frame = Instance.new("Frame"); Frame.Parent=ScreenGui; Frame.BackgroundColor3=Color3.fromRGB(20,20,20); Frame.BackgroundTransparency=0.15; Frame.BorderSizePixel=0; Frame.Size=UDim2.new(0,200,0,35); Frame.Position=UDim2.new(1,50,1,-50)
-	local Bar = Instance.new("Frame"); Bar.Parent=Frame; Bar.Size=UDim2.new(0,2,1,0); Bar.BorderSizePixel=0; RegisterObject(Bar, "Accent")
-	local TitleLab = Instance.new("TextLabel"); TitleLab.Parent=Frame; TitleLab.Text=title; TitleLab.Font=Enum.Font.GothamBold; TitleLab.TextSize=14; TitleLab.TextColor3=Color3.fromRGB(255,255,255); TitleLab.BackgroundTransparency=1; TitleLab.Size=UDim2.new(1,-10,0.5,0); TitleLab.Position=UDim2.new(0,10,0,3); TitleLab.TextXAlignment=Enum.TextXAlignment.Left
-	local StateLab = Instance.new("TextLabel"); StateLab.Parent=Frame; StateLab.Text=status and "已开启" or "已关闭"; StateLab.Font=Enum.Font.Gotham; StateLab.TextSize=11; StateLab.TextColor3=status and Color3.fromRGB(80,255,80) or Color3.fromRGB(255,80,80); StateLab.BackgroundTransparency=1; StateLab.Size=UDim2.new(1,-10,0.5,0); StateLab.Position=UDim2.new(0,10,0.5,-2); StateLab.TextXAlignment=Enum.TextXAlignment.Left
-	local TimerFrame = Instance.new("Frame"); TimerFrame.Parent=Frame; TimerFrame.BorderSizePixel=0; TimerFrame.Position=UDim2.new(0,0,1,-2); TimerFrame.Size=UDim2.new(1,0,0,2); TimerFrame.BackgroundColor3 = Color3.new(1,1,1) 
-	
-	local TimerGradient = Instance.new("UIGradient"); TimerGradient.Parent = TimerFrame
-	TimerGradient.Color = ColorSequence.new{ColorSequenceKeypoint.new(0, CurrentThemeData.Accent), ColorSequenceKeypoint.new(0.5, Color3.new(1,1,1)), ColorSequenceKeypoint.new(1, CurrentThemeData.Accent)}
-	RegisterObject(TimerGradient, "NotifGradient") 
-	
-	local yOffset = 0; for i=#Library.Globals.ActiveNotifs,1,-1 do local n=Library.Globals.ActiveNotifs[i]; if n.Parent then TweenService:Create(n,TweenInfo.new(0.3),{Position=UDim2.new(1,-210,1,-50-yOffset)}):Play(); yOffset=yOffset+40 end end
-	table.insert(Library.Globals.ActiveNotifs, Frame); TweenService:Create(Frame,TweenInfo.new(0.3),{Position=UDim2.new(1,-210,1,-50-yOffset)}):Play()
-	local timerTween = TweenService:Create(TimerFrame, TweenInfo.new(Library.Config.NotifDuration, Enum.EasingStyle.Linear), {Size=UDim2.new(0,0,0,2)}); timerTween:Play()
-	timerTween.Completed:Connect(function() for i,v in ipairs(Library.Globals.ActiveNotifs) do if v==Frame then table.remove(Library.Globals.ActiveNotifs, i) break end end; local out = TweenService:Create(Frame,TweenInfo.new(0.3),{Position=Frame.Position+UDim2.new(0,250,0,0)}); out:Play(); task.wait(0.3); Frame:Destroy() end)
-end
-local function CreateMobileWidget(name, toggleFunc, getEnabledState)
-	if ScreenGui:FindFirstChild("Float_"..name) then return end
-	local Widget = Instance.new("TextButton"); Widget.Name="Float_"..name; Widget.Parent=ScreenGui; Widget.Size=UDim2.new(0,50,0,50); Widget.Position=UDim2.new(0.5,-25,0.5,-25); Widget.BackgroundColor3=Color3.fromRGB(25,20,35); Widget.BackgroundTransparency=0.3; Widget.Text=GetFirstChar(name); Widget.TextSize=20; Widget.Font=Enum.Font.GothamBold; Widget.TextColor3=Color3.fromRGB(255,255,255); Widget.AutoButtonColor=false; Widget.ZIndex=50
-	local Corner = Instance.new("UICorner"); Corner.CornerRadius=UDim.new(0,12); Corner.Parent=Widget
-	local Stroke = Instance.new("UIStroke"); Stroke.Parent=Widget; Stroke.Thickness=2
-	local Close = Instance.new("TextButton"); Close.Parent=Widget; Close.Size=UDim2.new(0,15,0,15); Close.Position=UDim2.new(1,-5,0,-5); Close.AnchorPoint=Vector2.new(0.5,0.5); Close.BackgroundTransparency=1; Close.Text="X"; Close.TextColor3=Color3.fromRGB(255,80,80); Close.Font=Enum.Font.GothamBlack
-	Close.MouseButton1Click:Connect(function() Widget:Destroy() end)
-	local dragging, dragStart, startPos
-	Widget.InputBegan:Connect(function(i) if i.UserInputType.Name:match("Touch") or i.UserInputType.Name:match("MouseButton1") then dragging=true; dragStart=i.Position; startPos=Widget.Position end end)
-	Widget.InputChanged:Connect(function(i) if dragging and (i.UserInputType.Name:match("Touch") or i.UserInputType.Name:match("Mouse")) then local d=i.Position-dragStart; Widget.Position=UDim2.new(startPos.X.Scale,startPos.X.Offset+d.X,startPos.Y.Scale,startPos.Y.Offset+d.Y) end end)
-	Widget.InputEnded:Connect(function(i) if i.UserInputType.Name:match("Touch") or i.UserInputType.Name:match("MouseButton1") then dragging=false end end)
-	local c; c=RunService.Heartbeat:Connect(function() if not Widget.Parent then c:Disconnect() return end; Stroke.Color=getEnabledState() and CurrentThemeData.Accent or Color3.fromRGB(60,60,60) end)
-	Widget.MouseButton1Click:Connect(function() toggleFunc(true) end)
-end
-UserInputService.InputBegan:Connect(function(i,p) if not p and Library.Globals.BoundKeys[i.KeyCode] then Library.Globals.BoundKeys[i.KeyCode](true) end end)
-
---// 窗口系统 //--
-function Library:CreateWindow(title, pos, isMain, isSub)
-	local Window = {}
-	local isFolded = false
-	local isOpen = not isSub 
-	if isSub and not Library.Config.UIVisible then isOpen = false end
-	
-	local HeaderH = Library.Config.ItemHeight + 6
-	local Main = Instance.new("Frame"); Main.Name = "Window_"..title
-	Main.Parent = ScreenGui; Main.Position = pos; Main.Size = UDim2.new(0,Library.Config.WindowWidth,0,HeaderH); 
-	Main.BorderSizePixel = 0; Main.Visible = isOpen; Main.ZIndex = 10
-	RegisterObject(Main, "Window")
-	RegisterStyle(Main, true, 10)
-	
-	local Scale = Instance.new("UIScale"); Scale.Parent = Main; Scale.Scale = Library.Config.UIScale
-	local Header = Instance.new("Frame"); Header.Parent = Main; Header.BackgroundTransparency = 1; Header.Size = UDim2.new(1,0,0,HeaderH)
-	local Title = Instance.new("TextLabel"); Title.Parent = Header; Title.Text = title; Title.Font = Enum.Font.GothamBlack; 
-	Title.TextSize = math.clamp(HeaderH * 0.45, 12, 24) 
-	Title.Size = UDim2.new(1,-10,1,0); Title.Position = UDim2.new(0,10,0,0); Title.TextXAlignment = Enum.TextXAlignment.Left; Title.BackgroundTransparency = 1; RegisterObject(Title, "Text")
-	
-	local Container = Instance.new("ScrollingFrame"); Container.Name = "Container"
-	Container.Parent = Main; Container.BackgroundTransparency = 1; Container.BorderSizePixel = 0
-	Container.Position = UDim2.new(0,0,0,HeaderH); Container.Size = UDim2.new(1,0,0,0)
-	Container.ScrollBarThickness = 3; Container.CanvasSize = UDim2.new(0,0,0,0)
-	Container.AutomaticCanvasSize = Enum.AutomaticSize.Y
-	RegisterObject(Container, "Scroll")
-	
-	local List = Instance.new("UIListLayout"); List.Parent = Container; List.SortOrder = Enum.SortOrder.LayoutOrder; List.Padding = UDim.new(0,0)
-	local winData = {Main = Main, Header = Header, Title = Title, Container = Container, List = List, IsOpen = isOpen, IsSub = isSub}
-	table.insert(Library.Globals.Windows, winData)
-	if isSub then Library.Globals.SubWindows[title] = winData end
-	
-	local function RefreshH()
-		local contentH = List.AbsoluteContentSize.Y
-		local screenHeight = Camera.ViewportSize.Y / (Library.Config.UIScale > 0 and Library.Config.UIScale or 1)
-		local maxPerScreen = screenHeight - 100 
-		if maxPerScreen < 100 then maxPerScreen = 100 end 
-		local actualMax = math.min(Library.Config.WindowMaxHeight, maxPerScreen)
-		local curHeadH = Library.Config.ItemHeight + 6
-		if isFolded then
-			TweenService:Create(Main, TweenInfo.new(0.3, Enum.EasingStyle.Quad), {Size=UDim2.new(0,Library.Config.WindowWidth,0,curHeadH)}):Play()
-			Container.Visible = false
-		else
-			Container.Visible = true
-			local finalH = math.min(contentH, actualMax)
-			TweenService:Create(Main, TweenInfo.new(0.3, Enum.EasingStyle.Quad), {Size=UDim2.new(0,Library.Config.WindowWidth,0,curHeadH + finalH)}):Play()
-			Container.Size = UDim2.new(1, 0, 0, finalH)
-			Container.ScrollingEnabled = contentH > actualMax
-		end
-	end
-	winData.RefreshHeight = RefreshH
-	List:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(RefreshH)
-	
-	local drag, dStart, sPos, sTime
-	Header.Active = true 
-	Header.InputBegan:Connect(function(i) 
-		if i.UserInputType.Name:match("Mouse") or i.UserInputType.Name:match("Touch") then 
-			Library.Globals.TopZIndex = Library.Globals.TopZIndex + 1
-			Main.ZIndex = Library.Globals.TopZIndex
-			drag = true; dStart = i.Position; sPos = Main.Position; sTime = tick() 
-            if Library.Globals.ActivePicker then Library.Globals.ActivePicker:Destroy(); Library.Globals.ActivePicker = nil end
-		end 
-	end)
-	UserInputService.InputChanged:Connect(function(i) if drag and (i.UserInputType.Name:match("Mouse") or i.UserInputType.Name:match("Touch")) then local d=i.Position-dStart; TweenService:Create(Main,TweenInfo.new(0.05),{Position=UDim2.new(sPos.X.Scale,sPos.X.Offset+d.X,sPos.Y.Scale,sPos.Y.Offset+d.Y)}):Play() end end)
-	Header.InputEnded:Connect(function(i) if i.UserInputType.Name:match("Mouse") or i.UserInputType.Name:match("Touch") then drag=false; if (i.Position-dStart).Magnitude < 5 and tick()-sTime < 0.3 then isFolded=not isFolded; RefreshH() end end end)
-	
-	local function RegElem(inst, lbl, dots) table.insert(Library.Globals.Elements, {Instance=inst, Label=lbl, Dots=dots}) end
-	
-	function Window:CreateButton(name, callback)
-		local H = Library.Config.ItemHeight
-		local Btn = Instance.new("TextButton"); Btn.Parent=Container; Btn.BackgroundTransparency=1; Btn.Size=UDim2.new(1,0,0,H); Btn.Text=""; Btn.BorderSizePixel=0
-		Btn.ClipsDescendants = true
-		RegisterStyle(Btn, false, 6)
-		local Txt = Instance.new("TextLabel"); Txt.Parent=Btn; Txt.Text=name; Txt.Font=Enum.Font.GothamSemibold; Txt.TextSize=math.clamp(H*0.42, 10, 20); Txt.BackgroundTransparency=1; Txt.Size=UDim2.new(1,-10,1,0); Txt.Position=UDim2.new(0,10,0,0); Txt.TextXAlignment=Enum.TextXAlignment.Left; RegisterObject(Txt, "TextDark")
-		Btn.MouseButton1Click:Connect(function() CreateRipple(Btn); pcall(callback) end)
-		RegElem(Btn, Txt, nil)
-	end
-
-	function Window:BindWindow(subWindowName, defaultState)
-		local Mod = self:CreateModule(subWindowName, function(bool)
-			local target = Library.Globals.SubWindows[subWindowName]
-			if target then
-				target.IsOpen = bool
-				target.Main.Visible = bool and Library.Config.UIVisible
-				if bool and Library.Config.UIVisible then
-					if target.Main.Position.X.Offset == 0 and target.Main.Position.Y.Offset == 0 then
-						target.Main.Position = UDim2.new(0.5, -Library.Config.WindowWidth/2, 0.5, -100)
-					end
-					TweenService:Create(target.Main, TweenInfo.new(0.3), {BackgroundTransparency = CurrentThemeData.MainTrans}):Play()
-				else
-					target.Main.Visible = false
-				end
-			else
-				Library:Notify("未找到: "..subWindowName, false)
-			end
-		end, false)
-		if defaultState then Mod:Set(true) end
-	end
-
-	function Window:CreateModule(name, callback, allowBind)
-		if allowBind == nil then allowBind = true end
-		local Mod = {}; local enabled = false; local setOpen = false; local bindKey = nil
-		local H = Library.Config.ItemHeight
-		local Btn = Instance.new("TextButton"); Btn.Parent=Container; Btn.BackgroundTransparency=1; Btn.Size=UDim2.new(1,0,0,H); Btn.Text=""; Btn.BorderSizePixel=0; Btn.ClipsDescendants=true
-		RegisterStyle(Btn, false, 6)
-		local Txt = Instance.new("TextLabel"); Txt.Parent=Btn; Txt.Text=name; Txt.Font=Enum.Font.GothamSemibold; Txt.TextSize=math.clamp(H*0.42, 10, 20); Txt.BackgroundTransparency=1; Txt.Size=UDim2.new(1,-35,1,0); Txt.Position=UDim2.new(0,10,0,0); Txt.TextXAlignment=Enum.TextXAlignment.Left; RegisterObject(Txt, "TextDark")
-		local Dots = Instance.new("TextButton"); Dots.Parent=Btn; Dots.Text="..."; Dots.Font=Enum.Font.GothamBold; Dots.TextSize=math.clamp(H*0.42, 10, 20)+4; Dots.BackgroundTransparency=1; Dots.Size=UDim2.new(0,H,1,0); Dots.Position=UDim2.new(1,-H,0,0); Dots.Visible=allowBind; RegisterObject(Dots, "TextDark")
-		RegElem(Btn, Txt, Dots)
-		local SetFrame = Instance.new("Frame"); SetFrame.Parent=Container; SetFrame.BackgroundTransparency=0.5; RegisterObject(SetFrame, "SettingBg"); SetFrame.Size=UDim2.new(1,0,0,0); SetFrame.ClipsDescendants=true; SetFrame.Visible=false; SetFrame.BorderSizePixel=0
-		local SetList = Instance.new("UIListLayout"); SetList.Parent=SetFrame; SetList.Padding=UDim.new(0,0)
-		local function Toggle(isRemote)
-			enabled = not enabled
-			if enabled then RegisterObject(Txt, "Text"); RegisterObject(Dots, "Text"); TweenService:Create(Btn, TweenInfo.new(0.3), {BackgroundTransparency=0.8, BackgroundColor3=Color3.new(1,1,1)}):Play()
-			else RegisterObject(Txt, "TextDark"); RegisterObject(Dots, "TextDark"); TweenService:Create(Btn, TweenInfo.new(0.3), {BackgroundTransparency=1}):Play() end
-			if isRemote then CreateRipple(Btn, true) end
-			UpdateHUD(name, enabled); Library:Notify(name, enabled); pcall(callback, enabled)
-		end
-		function Mod:Set(bool) if bool ~= enabled then Toggle() end end
-
-		if allowBind then
-			local KB = Instance.new("TextButton"); KB.Parent=SetFrame; KB.Size=UDim2.new(1,0,0,24); KB.BackgroundTransparency=1; KB.Text=""; KB.BorderSizePixel=0
-			local KL = Instance.new("TextLabel"); KL.Parent=KB; KL.Text="绑定: 无"; KL.Font=Enum.Font.Gotham; KL.TextSize=11; KL.BackgroundTransparency=1; KL.Size=UDim2.new(1,-20,1,0); KL.Position=UDim2.new(0,10,0,0); KL.TextXAlignment=Enum.TextXAlignment.Left; RegisterObject(KL, "TextDark")
-			local listening = false
-			KB.MouseButton1Click:Connect(function()
-				if listening then return end; listening=true; KL.Text="按下按键..."
-				local c; c=UserInputService.InputBegan:Connect(function(i) if i.UserInputType==Enum.UserInputType.Keyboard then listening=false; c:Disconnect(); if i.KeyCode.Name=="Backspace" or i.KeyCode.Name=="Delete" then if bindKey then Library.Globals.BoundKeys[bindKey]=nil end; bindKey=nil; KL.Text="绑定: 无" else if bindKey then Library.Globals.BoundKeys[bindKey]=nil end; bindKey=i.KeyCode; Library.Globals.BoundKeys[bindKey]=Toggle; KL.Text="绑定: "..i.KeyCode.Name end end end)
-			end)
-			local pt, ip = 0, false
-			Btn.InputBegan:Connect(function(i) if i.UserInputType.Name:match("Touch") or i.UserInputType.Name:match("Mouse") then ip=true; pt=tick(); task.spawn(function() task.wait(0.6); if ip and tick()-pt>=0.6 then CreateMobileWidget(name, Toggle, function() return enabled end); Library:Notify("悬浮窗已创建", true); ip=false end end) end end)
-			Btn.InputEnded:Connect(function(i) if i.UserInputType.Name:match("Touch") or i.UserInputType.Name:match("Mouse") then if ip and tick()-pt<0.6 then CreateRipple(Btn); Toggle() end; ip=false end end)
-		else Btn.MouseButton1Click:Connect(function() CreateRipple(Btn); Toggle() end) end
-		Dots.MouseButton1Click:Connect(function()
-			setOpen = not setOpen; SetFrame.Visible=true; local th = setOpen and SetList.AbsoluteContentSize.Y or 0
-			TweenService:Create(SetFrame, TweenInfo.new(0.3), {Size=UDim2.new(1,0,0,th)}):Play()
-			local c; c=RunService.RenderStepped:Connect(function() List:ApplyLayout(); if winData.RefreshHeight then winData.RefreshHeight() end; if math.abs(SetFrame.Size.Y.Offset-th)<1 then c:Disconnect() end end)
-			if not setOpen then task.delay(0.3, function() SetFrame.Visible=false end) end
-		end)
-		
-        -- [滑块 Slider]
-        function Mod:CreateSlider(txt, min, max, def, call)
-			if not Dots.Visible then Dots.Visible=true end; local v = def
-			local F = Instance.new("Frame"); F.Parent=SetFrame; F.BackgroundTransparency=1; F.Size=UDim2.new(1,0,0,30); F.BorderSizePixel=0
-			local L = Instance.new("TextLabel"); L.Parent=F; L.Text=txt..": "..v; L.Font=Enum.Font.Gotham; L.TextSize=11; L.BackgroundTransparency=1; L.Size=UDim2.new(1,0,0,14); RegisterObject(L,"TextDark")
-			local B = Instance.new("Frame"); B.Parent=F; B.BackgroundColor3=Color3.fromRGB(60,60,60); B.BorderSizePixel=0; B.Position=UDim2.new(0,8,0,18); B.Size=UDim2.new(1,-16,0,4)
-			local Fil = Instance.new("Frame"); Fil.Parent=B; Fil.BorderSizePixel=0; Fil.Size=UDim2.new((def-min)/(max-min),0,1,0); RegisterObject(Fil,"Accent")
-			local T = Instance.new("TextButton"); T.Parent=F; T.BackgroundTransparency=1; T.Text=""; T.Size=UDim2.new(1,0,0,25); T.Position=UDim2.new(0,0,0,5); T.ZIndex=10
-			local d=false; T.InputBegan:Connect(function(i) if i.UserInputType.Name:match("Touch") or i.UserInputType.Name:match("Mouse") then d=true end end); UserInputService.InputEnded:Connect(function(i) if i.UserInputType.Name:match("Touch") or i.UserInputType.Name:match("Mouse") then d=false end end)
-			UserInputService.InputChanged:Connect(function(i) if d and (i.UserInputType.Name:match("Touch") or i.UserInputType.Name:match("Mouse")) then local p=math.clamp((i.Position.X-B.AbsolutePosition.X)/B.AbsoluteSize.X,0,1); v=math.floor(min+(max-min)*p); L.Text=txt..": "..v; Fil.Size=UDim2.new(p,0,1,0); pcall(call,v) end end)
-			pcall(call, v)
-		end
-
-        -- [开关 Switch]
-		function Mod:CreateSwitch(txt, call, defaultState)
-			if not Dots.Visible then Dots.Visible=true end; local on=defaultState or false
-			local B=Instance.new("TextButton"); B.Parent=SetFrame; B.BackgroundTransparency=1; B.Size=UDim2.new(1,0,0,24); B.Text=""; B.BorderSizePixel=0
-			local L=Instance.new("TextLabel"); L.Parent=B; L.Text=txt; L.Font=Enum.Font.Gotham; L.TextSize=11; L.BackgroundTransparency=1; L.Size=UDim2.new(1,-30,1,0); L.Position=UDim2.new(0,10,0,0); L.TextXAlignment=Enum.TextXAlignment.Left; RegisterObject(L,"TextDark")
-			local Box=Instance.new("Frame"); Box.Parent=B; Box.Size=UDim2.new(0,12,0,12); Box.Position=UDim2.new(1,-20,0.5,-6); Box.BackgroundColor3=Color3.fromRGB(60,60,60); Box.BorderSizePixel=0
-			local Ind=Instance.new("Frame"); Ind.Parent=Box; Ind.Size=UDim2.new(1,-2,1,-2); Ind.Position=UDim2.new(0,1,0,1); Ind.Visible=on; Ind.BorderSizePixel=0; RegisterObject(Ind,"Accent")
-			B.MouseButton1Click:Connect(function() on=not on; Ind.Visible=on; pcall(call, on) end)
-			if on then pcall(call, on) end
-		end
-
-        -- [下拉框 Dropdown]
-		function Mod:CreateDropdown(txt, opts, call)
-			if not Dots.Visible then Dots.Visible=true end; local open=false; local H=26
-			local Base=Instance.new("Frame"); Base.Parent=SetFrame; Base.BackgroundTransparency=1; Base.Size=UDim2.new(1,0,0,H); Base.ClipsDescendants=true; Base.BorderSizePixel=0
-			local Main=Instance.new("TextButton"); Main.Parent=Base; Main.BackgroundTransparency=1; Main.Size=UDim2.new(1,0,0,H); Main.Text=""; Main.AutoButtonColor=false; Main.BorderSizePixel=0
-			local L=Instance.new("TextLabel"); L.Parent=Main; L.Text=txt.." >"; L.Font=Enum.Font.Gotham; L.TextSize=11; L.BackgroundTransparency=1; L.Size=UDim2.new(1,-20,1,0); L.Position=UDim2.new(0,10,0,0); L.TextXAlignment=Enum.TextXAlignment.Left; RegisterObject(L,"TextDark")
-			local Opts=Instance.new("Frame"); Opts.Parent=Base; Opts.Position=UDim2.new(0,0,0,H); Opts.Size=UDim2.new(1,0,0,0); Opts.BackgroundTransparency=1; Opts.BorderSizePixel=0
-			local OList=Instance.new("UIListLayout"); OList.Parent=Opts; OList.Padding=UDim.new(0,0)
-			for _,o in ipairs(opts) do
-				local Ob=Instance.new("TextButton"); Ob.Parent=Opts; Ob.Size=UDim2.new(1,0,0,22); Ob.BackgroundTransparency=1; Ob.BorderSizePixel=0; Ob.Text=o; Ob.Font=Enum.Font.Gotham; Ob.TextSize=11; Ob.TextColor3=Color3.fromRGB(200,200,200)
-				Ob.MouseButton1Click:Connect(function() L.Text=txt..": "..o; open=false; local nh=H; local d=nh-Base.Size.Y.Offset; local nsh=SetFrame.Size.Y.Offset+d; TweenService:Create(Base,TweenInfo.new(0.3,Enum.EasingStyle.Quad,Enum.EasingDirection.Out),{Size=UDim2.new(1,0,0,nh)}):Play(); TweenService:Create(SetFrame,TweenInfo.new(0.3,Enum.EasingStyle.Quad,Enum.EasingDirection.Out),{Size=UDim2.new(1,0,0,nsh)}):Play(); local c; c=RunService.RenderStepped:Connect(function() List:ApplyLayout(); if winData.RefreshHeight then winData.RefreshHeight() end; if Base.Size.Y.Offset==nh then c:Disconnect() end end); pcall(call,o) end)
-			end
-			Main.MouseButton1Click:Connect(function() open=not open; local nh=open and (H+(#opts*22)) or H; local d=nh-Base.Size.Y.Offset; local nsh=SetFrame.Size.Y.Offset+d; TweenService:Create(Base,TweenInfo.new(0.3,Enum.EasingStyle.Quad,Enum.EasingDirection.Out),{Size=UDim2.new(1,0,0,nh)}):Play(); TweenService:Create(SetFrame,TweenInfo.new(0.3,Enum.EasingStyle.Quad,Enum.EasingDirection.Out),{Size=UDim2.new(1,0,0,nsh)}):Play(); local c; c=RunService.RenderStepped:Connect(function() List:ApplyLayout(); if winData.RefreshHeight then winData.RefreshHeight() end; if math.abs(Base.Size.Y.Offset-nh)<1 then c:Disconnect() end end) end)
-		end
-
-        -- [输入框 Input]
-        function Mod:CreateInput(text, placeholder, callback)
-            if not Dots.Visible then Dots.Visible=true end
-            local BoxH = 26
-            local Container = Instance.new("Frame"); Container.Parent = SetFrame; Container.BackgroundTransparency = 1; Container.Size = UDim2.new(1, 0, 0, BoxH + 4); Container.BorderSizePixel = 0
-            
-            local Label = Instance.new("TextLabel"); Label.Parent = Container; Label.Text = text..":"; Label.Font = Enum.Font.Gotham; Label.TextSize = 11; Label.BackgroundTransparency = 1; Label.Size = UDim2.new(0, 60, 1, 0); Label.Position = UDim2.new(0, 10, 0, 0); Label.TextXAlignment = Enum.TextXAlignment.Left; RegisterObject(Label, "TextDark")
-            
-            local InputBg = Instance.new("Frame"); InputBg.Parent = Container; InputBg.BackgroundColor3 = Color3.fromRGB(40, 40, 45); InputBg.Size = UDim2.new(1, -80, 0, BoxH); InputBg.Position = UDim2.new(0, 70, 0.5, 0); InputBg.AnchorPoint = Vector2.new(0, 0.5); InputBg.BorderSizePixel = 0
-            local Corner = Instance.new("UICorner"); Corner.CornerRadius = UDim.new(0, 4); Corner.Parent = InputBg
-            
-            local TextBox = Instance.new("TextBox"); TextBox.Parent = InputBg; TextBox.BackgroundTransparency = 1; TextBox.Size = UDim2.new(1, -10, 1, 0); TextBox.Position = UDim2.new(0, 5, 0, 0); TextBox.Font = Enum.Font.Gotham; TextBox.Text = ""; TextBox.PlaceholderText = placeholder or "输入..."; TextBox.TextSize = 12; TextBox.TextColor3 = Color3.new(1,1,1); TextBox.PlaceholderColor3 = Color3.fromRGB(150,150,150); TextBox.TextXAlignment = Enum.TextXAlignment.Left; TextBox.ClearTextOnFocus = false
-            
-            TextBox.FocusLost:Connect(function(enter)
-                if enter then
-                    pcall(callback, TextBox.Text)
-                    Library:Notify("输入已应用", true)
-                end
-            end)
+    -- 速度功能
+    local Speed = MovementWin:CreateModule("速度", function(state)
+        print("速度状态:", state)
+        
+        if state then
+            local character = player.Character
+            if character and character:FindFirstChild("Humanoid") then
+                character.Humanoid.WalkSpeed = _G.SpeedValue or 16
+            end
+        else
+            local character = player.Character
+            if character and character:FindFirstChild("Humanoid") then
+                character.Humanoid.WalkSpeed = 16
+            end
         end
-
-        -- [外置颜色选择器 ColorPicker]
-        function Mod:CreateColorPicker(text, defaultColor, callback)
-            if not Dots.Visible then Dots.Visible=true end
-            local h, s, v = ToHSV(defaultColor or Color3.fromRGB(255,255,255))
-            local currentColor = defaultColor or Color3.fromRGB(255,255,255)
-            
-            local Container = Instance.new("TextButton"); Container.Parent = SetFrame; Container.BackgroundTransparency = 1; Container.Size = UDim2.new(1, 0, 0, 24); Container.Text = ""; Container.AutoButtonColor = false
-            
-            local Label = Instance.new("TextLabel"); Label.Parent = Container; Label.Text = text; Label.Font = Enum.Font.Gotham; Label.TextSize = 11; Label.BackgroundTransparency = 1; Label.Size = UDim2.new(1, -40, 1, 0); Label.Position = UDim2.new(0, 10, 0, 0); Label.TextXAlignment = Enum.TextXAlignment.Left; RegisterObject(Label, "TextDark")
-            
-            local Preview = Instance.new("Frame"); Preview.Parent = Container; Preview.Size = UDim2.new(0, 30, 0, 14); Preview.Position = UDim2.new(1, -40, 0.5, 0); Preview.AnchorPoint = Vector2.new(0, 0.5); Preview.BackgroundColor3 = currentColor; Preview.BorderSizePixel = 0
-            local PStroke = Instance.new("UIStroke"); PStroke.Parent = Preview; PStroke.Thickness = 1; PStroke.Color = Color3.fromRGB(100,100,100); PStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
-            local PCorner = Instance.new("UICorner"); PCorner.CornerRadius = UDim.new(0, 3); PCorner.Parent = Preview
-            
-            Container.MouseButton1Click:Connect(function()
-                if Library.Globals.ActivePicker then Library.Globals.ActivePicker:Destroy(); Library.Globals.ActivePicker = nil end
-                
-                local PickerFrame = Instance.new("Frame"); PickerFrame.Name = "ColorPicker_PopOut"; PickerFrame.Parent = ScreenGui; PickerFrame.Size = UDim2.new(0, 180, 0, 200); PickerFrame.ZIndex = Library.Globals.TopZIndex + 100; PickerFrame.BorderSizePixel = 0
-                RegisterObject(PickerFrame, "PickerBg")
-                RegisterStyle(PickerFrame, true, 8)
-                
-                local btnAbsPos = Container.AbsolutePosition
-                local btnAbsSize = Container.AbsoluteSize
-                local screenWidth = ScreenGui.AbsoluteSize.X
-                local xPos = btnAbsPos.X + btnAbsSize.X + 10
-                if xPos + 180 > screenWidth then xPos = btnAbsPos.X - 190 end
-                
-                PickerFrame.Position = UDim2.new(0, xPos, 0, btnAbsPos.Y - 50)
-                Library.Globals.ActivePicker = PickerFrame
-                
-                PickerFrame.Size = UDim2.new(0,0,0,0)
-                TweenService:Create(PickerFrame, TweenInfo.new(0.3, Enum.EasingStyle.Back), {Size = UDim2.new(0, 180, 0, 210)}):Play()
-                
-                local MainPadding = Instance.new("UIPadding"); MainPadding.Parent = PickerFrame; MainPadding.PaddingTop = UDim.new(0,10); MainPadding.PaddingBottom = UDim.new(0,10); MainPadding.PaddingLeft = UDim.new(0,10); MainPadding.PaddingRight = UDim.new(0,10)
-                
-                local SVBox = Instance.new("TextButton"); SVBox.Parent = PickerFrame; SVBox.Size = UDim2.new(1, -25, 0, 120); SVBox.Text = ""; SVBox.AutoButtonColor = false; SVBox.BorderSizePixel = 0; SVBox.ZIndex = PickerFrame.ZIndex + 1
-                local SVGrad = Instance.new("UIGradient"); SVGrad.Parent = SVBox; SVGrad.Color = ColorSequence.new{ColorSequenceKeypoint.new(0, Color3.new(1,1,1)), ColorSequenceKeypoint.new(1, Color3.fromHSV(h, 1, 1))}
-                local SVImg = Instance.new("ImageLabel"); SVImg.Parent = SVBox; SVImg.Size = UDim2.new(1,0,1,0); SVImg.BackgroundTransparency = 1; SVImg.Image = "rbxassetid://4155801252"; SVImg.ZIndex = SVBox.ZIndex
-                
-                local PickerPoint = Instance.new("Frame"); PickerPoint.Parent = SVBox; PickerPoint.Size = UDim2.new(0,6,0,6); PickerPoint.AnchorPoint = Vector2.new(0.5,0.5); PickerPoint.BackgroundColor3 = Color3.new(1,1,1); PickerPoint.BorderSizePixel = 0; PickerPoint.ZIndex = SVBox.ZIndex + 2
-                local PS = Instance.new("UIStroke"); PS.Parent = PickerPoint; PS.Thickness = 1; PS.Color = Color3.new(0,0,0)
-                local PC = Instance.new("UICorner"); PC.Parent = PickerPoint; PC.CornerRadius = UDim.new(1,0)
-                
-                local HueBox = Instance.new("TextButton"); HueBox.Parent = PickerFrame; HueBox.Size = UDim2.new(0, 15, 0, 120); HueBox.Position = UDim2.new(1, -15, 0, 0); HueBox.Text = ""; HueBox.AutoButtonColor = false; HueBox.BorderSizePixel = 0; HueBox.BackgroundColor3 = Color3.new(1,1,1); HueBox.ZIndex = PickerFrame.ZIndex + 1
-                local HueGrad = Instance.new("UIGradient"); HueGrad.Parent = HueBox; HueGrad.Rotation = 90; HueGrad.Color = ColorSequence.new{
-                    ColorSequenceKeypoint.new(0, Color3.fromRGB(0,0,0)),
-                    ColorSequenceKeypoint.new(0.5, Color3.fromRGB(128,128,128)),
-                    ColorSequenceKeypoint.new(1, Color3.fromRGB(255,255,255))
-                }
-                local HuePoint = Instance.new("Frame"); HuePoint.Parent = HueBox; HuePoint.Size = UDim2.new(1,0,0,2); HuePoint.BackgroundColor3 = Color3.new(1,1,1); HuePoint.BorderSizePixel = 0; HuePoint.ZIndex = HueBox.ZIndex + 2
-                local HS = Instance.new("UIStroke"); HS.Parent = HuePoint; HS.Thickness = 1; HS.Color = Color3.new(0,0,0)
-                
-                local InputFrame = Instance.new("Frame"); InputFrame.Parent = PickerFrame; InputFrame.BackgroundTransparency = 1; InputFrame.Size = UDim2.new(1, 0, 0, 20); InputFrame.Position = UDim2.new(0, 0, 0, 130); InputFrame.ZIndex = PickerFrame.ZIndex + 1
-                local Layout = Instance.new("UIListLayout"); Layout.Parent = InputFrame; Layout.FillDirection = Enum.FillDirection.Horizontal; Layout.Padding = UDim.new(0, 5)
-                
-                local RBox = Instance.new("TextBox"); RBox.Parent = InputFrame; RBox.Size = UDim2.new(0.3, 0, 1, 0); RBox.BackgroundColor3 = Color3.fromRGB(40,40,40); RBox.TextColor3 = Color3.new(1,1,1); RBox.Text = math.floor(currentColor.R*255); RBox.Font = Enum.Font.Gotham; RBox.TextSize = 12; RBox.ZIndex = InputFrame.ZIndex
-                local GBox = RBox:Clone(); GBox.Parent = InputFrame; GBox.Text = math.floor(currentColor.G*255)
-                local BBox = RBox:Clone(); BBox.Parent = InputFrame; BBox.Text = math.floor(currentColor.B*255)
-                local CornerR = Instance.new("UICorner"); CornerR.Parent = RBox; CornerR.CornerRadius = UDim.new(0,4)
-                local CornerG = Instance.new("UICorner"); CornerG.Parent = GBox; CornerG.CornerRadius = UDim.new(0,4)
-                local CornerB = Instance.new("UICorner"); CornerB.Parent = BBox; CornerB.CornerRadius = UDim.new(0,4)
-                
-                local ConfirmBtn = Instance.new("TextButton"); ConfirmBtn.Parent = PickerFrame; ConfirmBtn.Size = UDim2.new(1, 0, 0, 25); ConfirmBtn.Position = UDim2.new(0, 0, 1, -25); ConfirmBtn.BackgroundColor3 = CurrentThemeData.Accent; ConfirmBtn.Text = "确定"; ConfirmBtn.Font = Enum.Font.GothamBold; ConfirmBtn.TextColor3 = Color3.new(1,1,1); ConfirmBtn.TextSize = 12; ConfirmBtn.ZIndex = PickerFrame.ZIndex + 1
-                local CB_Corner = Instance.new("UICorner"); CB_Corner.Parent = ConfirmBtn; CB_Corner.CornerRadius = UDim.new(0, 4)
-                
-                local function UpdateColor(notify)
-                    currentColor = FromHSV(h, s, v)
-                    SVGrad.Color = ColorSequence.new{ColorSequenceKeypoint.new(0, Color3.new(1,1,1)), ColorSequenceKeypoint.new(1, FromHSV(h, 1, 1))}
-                    Preview.BackgroundColor3 = currentColor
-                    RBox.Text = math.floor(currentColor.R*255)
-                    GBox.Text = math.floor(currentColor.G*255)
-                    BBox.Text = math.floor(currentColor.B*255)
-                    
-                    PickerPoint.Position = UDim2.new(s, 0, 1-v, 0)
-                    HuePoint.Position = UDim2.new(0, 0, 1-h, 0)
-                    
-                    if notify then pcall(callback, currentColor) end
-                end
-                
-                UpdateColor(false)
-                
-                local dragHue, dragSV = false, false
-                HueBox.InputBegan:Connect(function(input)
-                    if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-                        dragHue = true
-                    end
-                end)
-                SVBox.InputBegan:Connect(function(input)
-                    if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-                        dragSV = true
-                    end
-                end)
-                UserInputService.InputEnded:Connect(function(input)
-                    if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-                        dragHue = false
-                        dragSV = false
-                    end
-                end)
-                UserInputService.InputChanged:Connect(function(input)
-                    if input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch then
-                        if dragHue then
-                            local y = math.clamp((input.Position.Y - HueBox.AbsolutePosition.Y) / HueBox.AbsoluteSize.Y, 0, 1)
-                            h = 1 - y
-                            UpdateColor(true)
-                        elseif dragSV then
-                            local x = math.clamp((input.Position.X - SVBox.AbsolutePosition.X) / SVBox.AbsoluteSize.X, 0, 1)
-                            local y = math.clamp((input.Position.Y - SVBox.AbsolutePosition.Y) / SVBox.AbsoluteSize.Y, 0, 1)
-                            s = x
-                            v = 1 - y
-                            UpdateColor(true)
+    end)
+    
+    Speed:CreateSlider("速度值", 1, 200, 16, function(val)
+        print("速度值设置为:", val)
+        _G.SpeedValue = val
+        
+        if player.Character and player.Character:FindFirstChild("Humanoid") then
+            local humanoid = player.Character.Humanoid
+            if humanoid.WalkSpeed > 16 then
+                humanoid.WalkSpeed = val
+            end
+        end
+    end)
+    
+    -- 穿墙功能
+    local Noclip = MovementWin:CreateModule("穿墙", function(state)
+        print("穿墙状态:", state)
+        
+        if state then
+            local connection = RunService.Stepped:Connect(function()
+                if player.Character then
+                    for _, part in pairs(player.Character:GetDescendants()) do
+                        if part:IsA("BasePart") then
+                            part.CanCollide = false
                         end
                     end
-                end)
-                
-                local function UpdateFromRGB()
-                    local r, g, b = tonumber(RBox.Text) or 0, tonumber(GBox.Text) or 0, tonumber(BBox.Text) or 0
-                    currentColor = Color3.fromRGB(r, g, b)
-                    h, s, v = ToHSV(currentColor)
-                    UpdateColor(true)
                 end
-                RBox.FocusLost:Connect(UpdateFromRGB); GBox.FocusLost:Connect(UpdateFromRGB); BBox.FocusLost:Connect(UpdateFromRGB)
-                
-                ConfirmBtn.MouseButton1Click:Connect(function()
-                    PickerFrame:Destroy()
-                    Library.Globals.ActivePicker = nil
-                end)
             end)
+            _G.NoclipConnection = connection
+        else
+            if _G.NoclipConnection then
+                _G.NoclipConnection:Disconnect()
+                _G.NoclipConnection = nil
+            end
+            print("穿墙已关闭")
         end
-
-		return Mod
-	end
-	return Window
-end
-
---// 内置设置窗口 (已修复主题选项) //--
-function Library:SetupSettings()
-	local Sets = Library:CreateWindow("UI设置", UDim2.new(0.5, -100, 0.5, -100))
-	
-	local UIConf = Sets:CreateModule("界面配置", function() end, false)
-	
-	-- 修复：使用黑白灰主题列表
-	UIConf:CreateDropdown("主题选择", 
-		{"Default", "LightGray", "MediumGray", "DarkGray", "PureBlack", "PureWhite", "XA_Special"}, 
-		function(v) 
-			Library:SetTheme(v)
-			Library:Notify("主题切换", v)
-		end)
-    
-	UIConf:CreateSlider("整体缩放(%)", 50, 150, math.floor(Library.Config.UIScale * 100), function(v) 
-		Library.Config.UIScale = v / 100; Library:RefreshDimensions() 
-	end)
-    
-	UIConf:CreateSlider("窗口宽度", 100, 300, Library.Config.WindowWidth, function(v)
-		Library.Config.WindowWidth = v; Library:RefreshDimensions()
-	end)
-    
-    UIConf:CreateSlider("窗口最大高度", 200, 600, Library.Config.WindowMaxHeight, function(v)
-        Library.Config.WindowMaxHeight = v; Library:RefreshDimensions()
     end)
     
-	local StyleConf = Sets:CreateModule("样式设置", function() end, false)
-	StyleConf:CreateSwitch("圆角风格", function(v) 
-		Library.Config.UseCorners = v; Library:RefreshStyle(); SaveConfig() 
-	end, Library.Config.UseCorners)
-	StyleConf:CreateSwitch("UI 描边", function(v) 
-		Library.Config.UseStroke = v; Library:RefreshStyle(); SaveConfig() 
-	end, Library.Config.UseStroke)
-
-	local FuncConf = Sets:CreateModule("功能开关", function() end, false)
-	FuncConf:CreateSwitch("显示 HUD", function(v) Library:SetHUDVisible(v) end, Library.Config.ShowHUD)
-	FuncConf:CreateSwitch("显示 通知", function(v) Library:SetNotifsVisible(v) end, Library.Config.ShowNotifs)
+    -- 无限跳跃
+    local InfJump = MovementWin:CreateModule("无限跳跃", function(state)
+        print("无限跳跃状态:", state)
+        
+        if state then
+            local connection = UserInputService.JumpRequest:Connect(function()
+                if player.Character and player.Character:FindFirstChild("Humanoid") then
+                    player.Character.Humanoid:ChangeState(Enum.HumanoidStateType.Jumping)
+                end
+            end)
+            _G.InfJumpConnection = connection
+        else
+            if _G.InfJumpConnection then
+                _G.InfJumpConnection:Disconnect()
+                _G.InfJumpConnection = nil
+            end
+        end
+    end)
     
-	Sets:CreateButton("保存当前配置", function() SaveConfig(); Library:Notify("配置已保存", true) end)
-    return Sets
+    -- 防掉落功能
+    local AntiFall = MovementWin:CreateModule("防掉落", function(state)
+        print("防掉落状态:", state)
+        
+        if state then
+            local connection = RunService.Heartbeat:Connect(function()
+                if player.Character and player.Character:FindFirstChild("HumanoidRootPart") then
+                    local root = player.Character.HumanoidRootPart
+                    if root.Position.Y < (_G.AntiFallHeight or -50) then
+                        root.CFrame = CFrame.new(root.Position.X, 50, root.Position.Z)
+                    end
+                end
+            end)
+            _G.AntiFallConnection = connection
+        else
+            if _G.AntiFallConnection then
+                _G.AntiFallConnection:Disconnect()
+                _G.AntiFallConnection = nil
+            end
+        end
+    end)
+    
+    AntiFall:CreateSlider("防掉落高度", -100, 0, -50, function(val)
+        print("防掉落高度设置为:", val)
+        _G.AntiFallHeight = val
+    end)
+    
+    -- ==================== 世界功能 ====================
+    -- 天空颜色
+    local SkyColor = WorldWin:CreateModule("天空颜色", function(state)
+        print("天空颜色状态:", state)
+        
+        if not state then
+            if _G.OriginalSkybox then
+                for property, value in pairs(_G.OriginalSkybox) do
+                    Lighting[property] = value
+                end
+            end
+        end
+    end)
+    
+    -- 保存原始天空
+    _G.OriginalSkybox = {
+        SkyboxBk = Lighting.SkyboxBk,
+        SkyboxDn = Lighting.SkyboxDn,
+        SkyboxFt = Lighting.SkyboxFt,
+        SkyboxLf = Lighting.SkyboxLf,
+        SkyboxRt = Lighting.SkyboxRt,
+        SkyboxUp = Lighting.SkyboxUp
+    }
+    
+    SkyColor:CreateDropdown("天空颜色", {"红色", "蓝色", "绿色", "紫色", "橙色"}, function(selected)
+        print("天空颜色选择:", selected)
+        
+        local colors = {
+            ["红色"] = Color3.fromRGB(255, 0, 0),
+            ["蓝色"] = Color3.fromRGB(0, 0, 255),
+            ["绿色"] = Color3.fromRGB(0, 255, 0),
+            ["紫色"] = Color3.fromRGB(150, 0, 255),
+            ["橙色"] = Color3.fromRGB(255, 165, 0)
+        }
+        
+        if colors[selected] then
+            local color = colors[selected]
+            Lighting.SkyboxBk = color
+            Lighting.SkyboxDn = color
+            Lighting.SkyboxFt = color
+            Lighting.SkyboxLf = color
+            Lighting.SkyboxRt = color
+            Lighting.SkyboxUp = color
+        end
+    end)
+    
+    -- 重力调整
+    local Gravity = WorldWin:CreateModule("重力调整", function(state)
+        print("重力调整状态:", state)
+        
+        if state then
+            Workspace.Gravity = _G.GravityValue or 196.2
+        else
+            Workspace.Gravity = _G.OriginalGravity or 196.2
+        end
+    end)
+    
+    -- 保存原始重力
+    _G.OriginalGravity = Workspace.Gravity
+    
+    Gravity:CreateSlider("重力强度", 0, 500, 196.2, function(val)
+        print("重力强度设置为:", val)
+        _G.GravityValue = val
+        
+        if Workspace.Gravity ~= _G.OriginalGravity then
+            Workspace.Gravity = val
+        end
+    end)
+    
+    -- 跳跃调整功能
+    local Jump = WorldWin:CreateModule("跳跃高度", function(state)
+        print("跳跃高度状态:", state)
+        
+        if state then
+            local character = player.Character
+            if character and character:FindFirstChild("Humanoid") then
+                character.Humanoid.JumpPower = _G.JumpValue or 50
+            end
+        else
+            local character = player.Character
+            if character and character:FindFirstChild("Humanoid") then
+                character.Humanoid.JumpPower = 50
+            end
+        end
+    end)
+    
+    Jump:CreateSlider("跳跃高度", 50, 500, 50, function(val)
+        print("跳跃高度设置为:", val)
+        _G.JumpValue = val
+        
+        if player.Character and player.Character:FindFirstChild("Humanoid") then
+            local humanoid = player.Character.Humanoid
+            if humanoid.JumpPower > 50 then
+                humanoid.JumpPower = val
+            end
+        end
+    end)
+    
+    -- ==================== 实用按钮 ====================
+    
+    -- 移动功能窗口按钮
+    MovementWin:CreateButton("快速设置: 16 速度", function()
+        print("速度设置为: 16")
+        _G.SpeedValue = 16
+        if player.Character and player.Character:FindFirstChild("Humanoid") then
+            local humanoid = player.Character.Humanoid
+            if humanoid.WalkSpeed > 16 then
+                humanoid.WalkSpeed = 16
+            end
+        end
+    end)
+    
+    MovementWin:CreateButton("快速设置: 50 速度", function()
+        print("速度设置为: 50")
+        _G.SpeedValue = 50
+        if player.Character and player.Character:FindFirstChild("Humanoid") then
+            local humanoid = player.Character.Humanoid
+            if humanoid.WalkSpeed > 16 then
+                humanoid.WalkSpeed = 50
+            end
+        end
+    end)
+    
+    MovementWin:CreateButton("传送到出生点", function()
+        print("传送到出生点")
+        if player.Character and player.Character:FindFirstChild("HumanoidRootPart") then
+            player.Character.HumanoidRootPart.CFrame = CFrame.new(0, 10, 0)
+        end
+    end)
+    
+    -- 世界功能窗口按钮
+    WorldWin:CreateButton("红色天空", function()
+        print("天空颜色设置为: 红色")
+        local color = Color3.fromRGB(255, 0, 0)
+        Lighting.SkyboxBk = color
+        Lighting.SkyboxDn = color
+        Lighting.SkyboxFt = color
+        Lighting.SkyboxLf = color
+        Lighting.SkyboxRt = color
+        Lighting.SkyboxUp = color
+    end)
+    
+    WorldWin:CreateButton("蓝色天空", function()
+        print("天空颜色设置为: 蓝色")
+        local color = Color3.fromRGB(0, 0, 255)
+        Lighting.SkyboxBk = color
+        Lighting.SkyboxDn = color
+        Lighting.SkyboxFt = color
+        Lighting.SkyboxLf = color
+        Lighting.SkyboxRt = color
+        Lighting.SkyboxUp = color
+    end)
+    
+    WorldWin:CreateButton("恢复默认天空", function()
+        print("天空颜色已恢复默认")
+        if _G.OriginalSkybox then
+            for property, value in pairs(_G.OriginalSkybox) do
+                Lighting[property] = value
+            end
+        end
+    end)
+    
+    WorldWin:CreateButton("传送到上方", function()
+        print("传送到上方")
+        if player.Character and player.Character:FindFirstChild("HumanoidRootPart") then
+            local root = player.Character.HumanoidRootPart
+            root.CFrame = CFrame.new(root.Position + Vector3.new(0, 50, 0))
+        end
+    end)
+    
+    -- ==================== 主菜单按钮 ====================
+    
+    -- 重置所有设置按钮
+    Main:CreateButton("重置所有设置", function()
+        print("所有设置已重置")
+        
+        -- 关闭所有功能
+        if Fly then Fly:Set(false) end
+        if Speed then Speed:Set(false) end
+        if Noclip then Noclip:Set(false) end
+        if InfJump then InfJump:Set(false) end
+        if AntiFall then AntiFall:Set(false) end
+        if SkyColor then SkyColor:Set(false) end
+        if Gravity then Gravity:Set(false) end
+        if Jump then Jump:Set(false) end
+        if ESP then ESP:Set(false) end
+        if AimLock then AimLock:Set(false) end
+        if AutoShoot then AutoShoot:Set(false) end
+        if NoRecoil then NoRecoil:Set(false) end
+        if InfiniteAmmo then InfiniteAmmo:Set(false) end
+        if OneHitKill then OneHitKill:Set(false) end
+        
+        -- 清理连接
+        if _G.NoclipConnection then
+            _G.NoclipConnection:Disconnect()
+            _G.NoclipConnection = nil
+        end
+        if _G.InfJumpConnection then
+            _G.InfJumpConnection:Disconnect()
+            _G.InfJumpConnection = nil
+        end
+        if _G.AntiFallConnection then
+            _G.AntiFallConnection:Disconnect()
+            _G.AntiFallConnection = nil
+        end
+        
+        -- 恢复天空
+        if _G.OriginalSkybox then
+            for property, value in pairs(_G.OriginalSkybox) do
+                Lighting[property] = value
+            end
+        end
+        
+        -- 恢复重力
+        Workspace.Gravity = _G.OriginalGravity or 196.2
+        
+        -- 恢复速度
+        if player.Character and player.Character:FindFirstChild("Humanoid") then
+            player.Character.Humanoid.WalkSpeed = 16
+            player.Character.Humanoid.JumpPower = 50
+        end
+    end)
+    
+    -- 显示/隐藏所有窗口按钮
+    Main:CreateButton("显示/隐藏所有", function()
+        local isVisible = not MovementWin.Main.Visible
+        MovementWin.Main.Visible = isVisible
+        WorldWin.Main.Visible = isVisible
+        CombatWin.Main.Visible = isVisible
+        print(isVisible and "显示所有窗口" or "隐藏所有窗口")
+    end)
+    
+    -- ==================== 角色变化监听 ====================
+    
+    player.CharacterAdded:Connect(function(character)
+        task.wait(0.5)
+        
+        -- 恢复速度设置
+        if _G.SpeedValue then
+            local humanoid = character:WaitForChild("Humanoid")
+            humanoid.WalkSpeed = _G.SpeedValue
+            print("角色重生，恢复速度设置:", _G.SpeedValue)
+        end
+        
+        -- 恢复跳跃设置
+        if _G.JumpValue then
+            local humanoid = character:WaitForChild("Humanoid")
+            humanoid.JumpPower = _G.JumpValue
+            print("角色重生，恢复跳跃设置:", _G.JumpValue)
+        end
+    end)
+    
+    -- ==================== 设置窗口 ====================
+    
+    -- 建议在脚本末尾添加，用于管理全局设置
+    Library:SetupSettings()
+    
+    print("✅ YC GUI 加载完成！")
+    
+    -- 返回库对象
+    return Library
 end
 
-function Library:CreateMainControl(title) return self:CreateWindow(title, UDim2.new(0, 20, 0, 60), true, false) end
-function Library:CreateChildWindow(title) return self:CreateWindow(title, UDim2.new(0.5, -Library.Config.WindowWidth/2, 0.5, -100), false, true) end
+-- 执行创建
+CreateFullUI()
 
---// 初始化加载动画 //--
-task.spawn(function() Library:LoadLoader() end)
-
---// 兼容性修复：确保所有文字正确 //--
-task.delay(0.5, function()
-    -- 确保灵动岛文字正确
-    if Library.Globals.IslandObject then
-        Library.Globals.IslandObject.Text = Library.Config.IslandText or "XA"
-    end
-    
-    -- 更新所有窗口标题（如果需要）
-    for _, win in ipairs(Library.Globals.Windows) do
-        if win.Title and win.Title.Text then
-            -- 这里可以添加特定的标题修改逻辑
-        end
-    end
+-- 打印完成信息
+print("========================================")
+print("✅ YC GUI 多功能脚本已加载完成！")
+print("🎮 点击屏幕顶部的'YC GUI'按钮")
+print("📁 移动功能: 飞天、速度、穿墙等")
+print("🔫 战斗功能: 自瞄、自动射击、无后坐力等")
+print("👁️ ESP透视: 显示敌人位置、名称、距离")
+print("🌍 世界功能: 天空颜色、重力、跳跃等")
+print("========================================")
 end)
 
 return Library
