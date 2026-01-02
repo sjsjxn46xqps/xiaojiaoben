@@ -1,7 +1,7 @@
 -- ============================================
 -- YC GUI 多功能脚本 - 完整修复版
 -- GitHub: https://raw.githubusercontent.com/sjsjxn46xqps/xiaojiaoben/refs/heads/main/xiaoan(2).lua
--- ============================================
+-- 
 
 print("🔍 YC GUI 多功能脚本开始加载...")
 
