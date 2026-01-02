@@ -1137,6 +1137,7 @@ task.spawn(function() Library:LoadLoader() end)
 
 --// 兼容性修复：确保所有文字正确 //--
 task.delay(0.5, function()
+
     -- 确保灵动岛文字正确
     if Library.Globals.IslandObject then
         Library.Globals.IslandObject.Text = Library.Config.IslandText or "XA"
