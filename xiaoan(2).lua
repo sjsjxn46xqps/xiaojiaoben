@@ -85,123 +85,6 @@ Library.Themes = {
         PickerBg = Color3.fromRGB(35, 35, 40),
         IslandColor = Color3.fromRGB(20, 20, 25)
     },
-    ["Gray3D3D3D"] = { 
-        Name = "深灰 (#3D3D3D)",
-        Main = Color3.fromRGB(61, 61, 61), 
-        MainTrans = 0.1, 
-        Gradient1 = Color3.fromRGB(140, 140, 140),
-        Text = Color3.fromRGB(240, 240, 240), 
-        TextDark = Color3.fromRGB(180, 180, 180),
-        SettingBg = Color3.fromRGB(70, 70, 70), 
-        Accent = Color3.fromRGB(110, 110, 110),
-        Scroll = Color3.fromRGB(90, 90, 90), 
-        PickerBg = Color3.fromRGB(75, 75, 75),
-        IslandColor = Color3.fromRGB(61, 61, 61)
-    },
-    ["Gray494949"] = { 
-        Name = "中深灰 (#494949)",
-        Main = Color3.fromRGB(73, 73, 73), 
-        MainTrans = 0.1, 
-        Gradient1 = Color3.fromRGB(145, 145, 145),
-        Text = Color3.fromRGB(245, 245, 245), 
-        TextDark = Color3.fromRGB(190, 190, 190),
-        SettingBg = Color3.fromRGB(85, 85, 85), 
-        Accent = Color3.fromRGB(125, 125, 125),
-        Scroll = Color3.fromRGB(105, 105, 105), 
-        PickerBg = Color3.fromRGB(90, 90, 90),
-        IslandColor = Color3.fromRGB(73, 73, 73)
-    },
-    ["Gray5B5B5B"] = { 
-        Name = "中灰 (#5B5B5B)",
-        Main = Color3.fromRGB(91, 91, 91), 
-        MainTrans = 0.1, 
-        Gradient1 = Color3.fromRGB(155, 155, 155),
-        Text = Color3.fromRGB(250, 250, 250), 
-        TextDark = Color3.fromRGB(200, 200, 200),
-        SettingBg = Color3.fromRGB(105, 105, 105), 
-        Accent = Color3.fromRGB(140, 140, 140),
-        Scroll = Color3.fromRGB(120, 120, 120), 
-        PickerBg = Color3.fromRGB(110, 110, 110),
-        IslandColor = Color3.fromRGB(91, 91, 91)
-    },
-    ["Gray686868"] = { 
-        Name = "亮灰 (#686868)",
-        Main = Color3.fromRGB(104, 104, 104), 
-        MainTrans = 0.1, 
-        Gradient1 = Color3.fromRGB(165, 165, 165),
-        Text = Color3.fromRGB(255, 255, 255), 
-        TextDark = Color3.fromRGB(210, 210, 210),
-        SettingBg = Color3.fromRGB(120, 120, 120), 
-        Accent = Color3.fromRGB(155, 155, 155),
-        Scroll = Color3.fromRGB(135, 135, 135), 
-        PickerBg = Color3.fromRGB(125, 125, 125),
-        IslandColor = Color3.fromRGB(104, 104, 104)
-    },
-    ["Gray7C7C7C"] = { 
-        Name = "浅灰 (#7C7C7C)",
-        Main = Color3.fromRGB(124, 124, 124), 
-        MainTrans = 0.1, 
-        Gradient1 = Color3.fromRGB(185, 185, 185),
-        Text = Color3.fromRGB(30, 30, 30), 
-        TextDark = Color3.fromRGB(60, 60, 60),
-        SettingBg = Color3.fromRGB(140, 140, 140), 
-        Accent = Color3.fromRGB(175, 175, 175),
-        Scroll = Color3.fromRGB(155, 155, 155), 
-        PickerBg = Color3.fromRGB(145, 145, 145),
-        IslandColor = Color3.fromRGB(124, 124, 124)
-    },
-    ["Gray878787"] = { 
-        Name = "银灰 (#878787)",
-        Main = Color3.fromRGB(135, 135, 135), 
-        MainTrans = 0.1, 
-        Gradient1 = Color3.fromRGB(195, 195, 195),
-        Text = Color3.fromRGB(30, 30, 30), 
-        TextDark = Color3.fromRGB(70, 70, 70),
-        SettingBg = Color3.fromRGB(155, 155, 155), 
-        Accent = Color3.fromRGB(190, 190, 190),
-        Scroll = Color3.fromRGB(170, 170, 170), 
-        PickerBg = Color3.fromRGB(160, 160, 160),
-        IslandColor = Color3.fromRGB(135, 135, 135)
-    },
-    ["GrayC6C6C6"] = { 
-        Name = "浅银灰 (#C6C6C6)",
-        Main = Color3.fromRGB(198, 198, 198), 
-        MainTrans = 0.1, 
-        Gradient1 = Color3.fromRGB(225, 225, 225),
-        Text = Color3.fromRGB(20, 20, 20), 
-        TextDark = Color3.fromRGB(80, 80, 80),
-        SettingBg = Color3.fromRGB(215, 215, 215), 
-        Accent = Color3.fromRGB(180, 180, 180),
-        Scroll = Color3.fromRGB(205, 205, 205), 
-        PickerBg = Color3.fromRGB(210, 210, 210),
-        IslandColor = Color3.fromRGB(198, 198, 198)
-    },
-    ["GrayA8A8A8"] = { 
-        Name = "淡灰 (#A8A8A8)",
-        Main = Color3.fromRGB(168, 168, 168), 
-        MainTrans = 0.1, 
-        Gradient1 = Color3.fromRGB(205, 205, 205),
-        Text = Color3.fromRGB(25, 25, 25), 
-        TextDark = Color3.fromRGB(75, 75, 75),
-        SettingBg = Color3.fromRGB(185, 185, 185), 
-        Accent = Color3.fromRGB(150, 150, 150),
-        Scroll = Color3.fromRGB(175, 175, 175), 
-        PickerBg = Color3.fromRGB(180, 180, 180),
-        IslandColor = Color3.fromRGB(168, 168, 168)
-    },
-    ["Gray989898"] = { 
-        Name = "中浅灰 (#989898)",
-        Main = Color3.fromRGB(152, 152, 152), 
-        MainTrans = 0.1, 
-        Gradient1 = Color3.fromRGB(200, 200, 200),
-        Text = Color3.fromRGB(25, 25, 25), 
-        TextDark = Color3.fromRGB(70, 70, 70),
-        SettingBg = Color3.fromRGB(170, 170, 170), 
-        Accent = Color3.fromRGB(140, 140, 140),
-        Scroll = Color3.fromRGB(160, 160, 160), 
-        PickerBg = Color3.fromRGB(165, 165, 165),
-        IslandColor = Color3.fromRGB(152, 152, 152)
-    },
     ["LightGray"] = { 
         Name = "浅灰 (Light Gray)",
         Main = Color3.fromRGB(245, 245, 245), 
@@ -977,7 +860,7 @@ function Library:CreateWindow(title, pos, isMain, isSub)
 		local H = Library.Config.ItemHeight
 		local Btn = Instance.new("TextButton"); Btn.Parent=Container; Btn.BackgroundTransparency=1; Btn.Size=UDim2.new(1,0,0,H); Btn.Text=""; Btn.BorderSizePixel=0; Btn.ClipsDescendants=true
 		RegisterStyle(Btn, false, 6)
-		local Txt = Instance.new("TextLabel"); Txt.Parent=Btn; Txt.Text=name; Txt.Font=Enum.Font.GothamSemibold; Txt.TextSize=math.clamp(H*0.42, 10, 20); Txt.BackgroundTransparency=1; Txt.Size = UDim2.new(1,-35,1,0); Txt.Position=UDim2.new(0,10,0,0); Txt.TextXAlignment=Enum.TextXAlignment.Left; RegisterObject(Txt, "TextDark")
+		local Txt = Instance.new("TextLabel"); Txt.Parent=Btn; Txt.Text=name; Txt.Font=Enum.Font.GothamSemibold; Txt.TextSize=math.clamp(H*0.42, 10, 20); Txt.BackgroundTransparency=1; Txt.Size=UDim2.new(1,-35,1,0); Txt.Position=UDim2.new(0,10,0,0); Txt.TextXAlignment=Enum.TextXAlignment.Left; RegisterObject(Txt, "TextDark")
 		local Dots = Instance.new("TextButton"); Dots.Parent=Btn; Dots.Text="..."; Dots.Font=Enum.Font.GothamBold; Dots.TextSize=math.clamp(H*0.42, 10, 20)+4; Dots.BackgroundTransparency=1; Dots.Size=UDim2.new(0,H,1,0); Dots.Position=UDim2.new(1,-H,0,0); Dots.Visible=allowBind; RegisterObject(Dots, "TextDark")
 		RegElem(Btn, Txt, Dots)
 		local SetFrame = Instance.new("Frame"); SetFrame.Parent=Container; SetFrame.BackgroundTransparency=0.5; RegisterObject(SetFrame, "SettingBg"); SetFrame.Size=UDim2.new(1,0,0,0); SetFrame.ClipsDescendants=true; SetFrame.Visible=false; SetFrame.BorderSizePixel=0
@@ -1265,6 +1148,9 @@ task.delay(0.5, function()
             -- 这里可以添加特定的标题修改逻辑
         end
     end
+end)
+
+return Library
 end)
 
 return Library
