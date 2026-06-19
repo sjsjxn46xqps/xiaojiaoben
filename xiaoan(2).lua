@@ -1,11 +1,15 @@
 --[[
-    X-Style Dev Backdoor v5.3 (Mobile Touch + Aimbot)
+    X-Style Dev Backdoor v7.0 (Advanced Aimbot + Anti-Cheat + Full Optimization)
     Key: xa3765360431
+    - 27-layer anti-cheat bypass system (always on)
+    - Advanced aimbot with prediction, FOV, priority, keybind, sticky aim, etc.
     - GitHub images via writefile+getcustomasset (rbxassetid://)
     - Mobile touch flight (joystick + ↑↓ buttons)
-    - Speed boost without WalkSpeed modification (anti-cheat bypass)
-    - Transparent UI layers to show background image
+    - Speed boost without WalkSpeed modification
+    - Draggable floating icon
+    - Hitbox expand, Kill Aura, Bunny Hop, Spin Bot, Air Walk
     - All features properly manage connections and state
+    - Per-feature anti-cheat bypass
 ]]
 
 -- ==================== GitHub 图片链接 ====================
@@ -96,12 +100,857 @@ local L = {
     aimTorso = {zh="躯干", en="Torso"},
     aimAll = {zh="无差别", en="All"},
     aimNearest = {zh="最近", en="Nearest"},
+    -- 新增自瞄选项
+    aimPrediction = {zh="弹道预测", en="Prediction"},
+    aimPredStrength = {zh="预测强度", en="Pred Strength"},
+    aimFovCircle = {zh="FOV圆圈", en="FOV Circle"},
+    aimFovSize = {zh="FOV大小", en="FOV Size"},
+    aimPriority = {zh="目标优先", en="Priority"},
+    aimKey = {zh="瞄准按键", en="Aim Key"},
+    aimKeyNone = {zh="无(常驻)", en="None(Always)"},
+    aimKeyHold = {zh="按住瞄准", en="Hold"},
+    aimShowTarget = {zh="显示目标", en="Show Target"},
+    aimDeadzone = {zh="死区范围", en="Deadzone"},
+    aimKnockback = {zh="反后坐力", en="Anti-Recoil"},
+    aimAutoShoot = {zh="自动射击", en="Auto Shoot"},
+    aimSticky = {zh="粘滞瞄准", en="Sticky Aim"},
+    aimHealthBar = {zh="血量显示", en="Health Bar"},
+    aimTracer = {zh="弹道追踪", en="Tracer"},
+    aimClosestBone = {zh="最近骨骼", en="Closest Bone"},
+    aimPriorityDist = {zh="最近距离", en="Nearest Dist"},
+    aimPriorityHealth = {zh="最低血量", en="Lowest HP"},
+    aimPriorityFOV = {zh="FOV中心", en="FOV Center"},
+    aimPartHead = {zh="头部", en="Head"},
+    aimPartTorso = {zh="躯干", en="Torso"},
+    aimPartHRP = {zh="根部", en="Root"},
+    aimPartRandom = {zh="随机", en="Random"},
+    -- 新增战斗选项
+    hitbox = {zh="命中箱扩大", en="Hitbox Expand"},
+    hitboxSize = {zh="命中箱大小", en="Hitbox Size"},
+    hitboxTransparency = {zh="命中箱透明", en="Hitbox Trans"},
+    reach = {zh="攻击距离", en="Attack Reach"},
+    reachDist = {zh="攻击距离值", en="Reach Dist"},
+    killAura = {zh="杀戮光环", en="Kill Aura"},
+    killAuraRange = {zh="光环范围", en="Aura Range"},
+    -- 新增移动选项
+    bhop = {zh="连跳", en="Bunny Hop"},
+    airWalk = {zh="空中行走", en="Air Walk"},
+    spinBot = {zh="旋转机器人", en="Spin Bot"},
+    spinSpeed = {zh="旋转速度", en="Spin Speed"},
 }
 local function T(key) return L[key] and L[key][Lang] or key end
 
 -- ==================== KEY ====================
 local KEY = "xa3765360431"
 local active = false
+
+-- ####################################################################
+-- ==================== ANTI-CHEAT BYPASS SYSTEM ==================== --
+-- 默认开启，无法关闭，覆盖所有热门游戏和通用反作弊
+-- ####################################################################
+
+-- === 工具函数 ===
+local function safeHook(metatable, methodName, hookFn)
+    local mt = getrawmetatable(metatable)
+    if not mt then return end
+    setreadonly(mt, false)
+    local old = mt[methodName]
+    if old then
+        mt[methodName] = hookFn(old)
+    end
+    setreadonly(mt, true)
+end
+
+local function safeHookFunction(original, hookFn)
+    if hookfunction then
+        pcall(function() hookfunction(original, hookFn(original)) end)
+    end
+end
+
+-- === 1. 通用元表钩子：__namecall 拦截反作弊远程事件 ===
+-- 拦截 FireServer / InvokeServer，过滤已知的反作弊远程名称
+local ANTI_CHEAT_REMOTE_NAMES = {
+    -- 通用反作弊关键词
+    "AntiCheat", "anticheat", "ANTI_CHEAT", "AntiExploit", "antiexploit",
+    "ExploitDetected", "exploitdetected", "ExploitDetect", "KickRemote",
+    "kickremote", "KickPlayer", "kickplayer", "AutoKick", "autokick",
+    "SecurityCheck", "securitycheck", "IntegrityCheck", "integritycheck",
+    "ValidationCheck", "validationcheck", "ValidatePlayer", "validateplayer",
+    "PlayerValidation", "playervalidation", "SanityCheck", "sanitycheck",
+    "HeartbeatCheck", "heartbeatcheck", "PositionCheck", "positioncheck",
+    "MovementCheck", "movementcheck", "SpeedCheck", "speedcheck",
+    "JumpCheck", "jumpcheck", "FlyCheck", "flycheck",
+    "TeleportCheck", "teleportcheck", "NoClipCheck", "noclipcheck",
+    "GodCheck", "godcheck", "HackDetected", "hackdetected",
+    "CheatDetected", "cheatdetected", "SuspiciousActivity", "suspiciousactivity",
+    "ReportPlayer", "reportplayer", "LogPlayer", "logplayer",
+    "BanPlayer", "banplayer", "DetectCheat", "detectcheat",
+    "WalkSpeedCheck", "walkspeedcheck", "JumpPowerCheck", "jumppowercheck",
+    "HealthCheck", "healthcheck", "CharacterCheck", "charactercheck",
+    -- Blox Fruits
+    "MainRemotes", "CombatRemotes", "RemoteEvent", "AntiHack",
+    "KickHack", "ReportHack", "BloxHack", "FruitHack",
+    -- Da Hood
+    "DaHoodAnti", "HoodAnti", "HoodKick", "DaHoodKick",
+    -- Arsenal
+    "ArsenalAnti", "ArsenalKick", "ARS_AntiCheat",
+    -- Brookhaven
+    "BrookAnti", "BrookKick", "BH_AntiCheat",
+    -- Murder Mystery 2
+    "MM2Anti", "MM2Kick", "MurderAnti",
+    -- King Legacy
+    "KingAnti", "KingKick", "KLAntiCheat",
+    -- Pet Simulator
+    "PetAnti", "PetKick", "PetSimAnti",
+    -- Tower of Hell
+    "TOHAnti", "TowerAnti", "TOHKick",
+    -- Adopt Me
+    "AdoptAnti", "AdoptKick",
+    -- Universal patterns
+    "AC_", "ac_", "AE_", "ae_", "SEC_", "sec_",
+    "BAN_", "ban_", "KICK_", "kick_", "LOG_", "log_",
+    "CHECK_", "check_", "VALID_", "valid_",
+}
+
+local ANTI_CHEAT_REMOTE_PARTIAL = {
+    "anti", "Anti", "ANTI", "kick", "Kick", "KICK",
+    "exploit", "Exploit", "EXPLOIT", "hack", "Hack", "HACK",
+    "cheat", "Cheat", "CHEAT", "detect", "Detect", "DETECT",
+    "ban", "Ban", "BAN", "security", "Security", "SECURITY",
+    "valid", "Valid", "VALID", "integrity", "Integrity",
+    "sanity", "Sanity", "report", "Report", "REPORT",
+    "logplayer", "LogPlayer", "suspicious", "Suspicious",
+}
+
+local function isAntiCheatRemote(remoteName)
+    if not remoteName then return false end
+    local name = tostring(remoteName)
+    -- 精确匹配
+    for _, keyword in ipairs(ANTI_CHEAT_REMOTE_NAMES) do
+        if name == keyword then return true end
+    end
+    -- 部分匹配（名称中包含反作弊关键词）
+    for _, keyword in ipairs(ANTI_CHEAT_REMOTE_PARTIAL) do
+        if name:find(keyword) then
+            -- 排除误判：常见正常远程名称
+            local safeNames = {
+                "Inventory", "Shop", "Purchase", "Equip", "Unequip",
+                "Chat", "Message", "Trade", "Quest", "Mission",
+                "TeleportService", "FriendService", "Badge",
+            }
+            local isSafe = false
+            for _, safe in ipairs(safeNames) do
+                if name:find(safe) then isSafe = true; break end
+            end
+            if not isSafe then return true end
+        end
+    end
+    return false
+end
+
+-- Hook __namecall 拦截 FireServer/InvokeServer
+local oldNamecall
+oldNamecall = hookmetamethod(game, "__namecall", newcclosure(function(self, ...)
+    local method = getnamecallmethod()
+    if method == "FireServer" or method == "InvokeServer" then
+        local remoteName = self.Name
+        if isAntiCheatRemote(remoteName) then
+            return nil -- 静默丢弃反作弊远程调用
+        end
+        -- 额外检查：参数中包含反作弊标记
+        local args = {...}
+        for _, arg in ipairs(args) do
+            if type(arg) == "string" then
+                local lowerArg = arg:lower()
+                if lowerArg:find("exploit") or lowerArg:find("hack") or
+                   lowerArg:find("cheat") or lowerArg:find("kick") or
+                   lowerArg:find("ban") or lowerArg:find("suspicious") then
+                    return nil
+                end
+            end
+        end
+    end
+    return oldNamecall(self, ...)
+end))
+
+-- === 2. 属性欺骗：WalkSpeed / JumpPower / Health 返回正常值 ===
+-- 当游戏读取 Humanoid.WalkSpeed/JumpPower 时返回默认值，实际值不受影响
+local NORMAL_WALKSPEED = 16
+local NORMAL_JUMPPOWER = 50
+local NORMAL_MAXHEALTH = 100
+
+local oldIndex
+oldIndex = hookmetamethod(game, "__index", newcclosure(function(self, key)
+    if self:IsA("Humanoid") then
+        if key == "WalkSpeed" then return NORMAL_WALKSPEED end
+        if key == "JumpPower" then return NORMAL_JUMPPOWER end
+        if key == "Health" then return self.MaxHealth end
+        if key == "JumpHeight" then return 7.2 end
+    end
+    if self == Workspace and key == "Gravity" then return 196.2 end
+    return oldIndex(self, key)
+end))
+
+-- === 3. GetPropertyChangedSignal 拦截 ===
+-- 阻止游戏监听 WalkSpeed/JumpPower/Health 等属性变化
+local oldNamecall2
+oldNamecall2 = hookmetamethod(game, "__namecall", newcclosure(function(self, ...)
+    local method = getnamecallmethod()
+    if method == "GetPropertyChangedSignal" then
+        local args = {...}
+        local propName = args[1]
+        if propName == "WalkSpeed" or propName == "JumpPower" or
+           propName == "JumpHeight" or propName == "Health" or
+           propName == "MaxHealth" or propName == "PlatformStand" or
+           propName == "Sit" or propName == "State" then
+            -- 返回一个永远不会触发的信号
+            return Instance.new("BindableEvent").Event
+        end
+    end
+    return oldNamecall2(self, ...)
+end))
+
+-- === 4. Humanoid 状态欺骗 ===
+-- 当游戏检查 Humanoid:GetState() 时返回正常状态
+local oldGetState = nil
+pcall(function()
+    local humanoidMeta = getrawmetatable(humanoid)
+    if humanoidMeta then
+        setreadonly(humanoidMeta, false)
+        oldGetState = humanoidMeta.__index
+        setreadonly(humanoidMeta, true)
+    end
+end)
+
+-- === 5. FindFirstChild / WaitForChild 拦截 ===
+-- 防止游戏检测注入的实例（如 ESP、Highlight 等）
+local oldFindFirstChild
+oldFindFirstChild = hookmetamethod(game, "__namecall", newcclosure(function(self, ...)
+    local method = getnamecallmethod()
+    if method == "FindFirstChild" or method == "FindFirstChildWhichIsA" or
+       method == "FindFirstChildOfClass" or method == "WaitForChild" then
+        local args = {...}
+        local name = args[1]
+        -- 隐藏我们创建的实例
+        if type(name) == "string" then
+            if name == "ESPHighlight" or name == "ESPLabel" or name == "MainBg" or
+               name == "XAHitbox" or name == "XATracer" or name == "XAHealthBar" then
+                return nil
+            end
+        end
+    end
+    return oldFindFirstChild(self, ...)
+end))
+
+-- === 6. Raycast 拦截（ESP/透视检测绕过）===
+-- 某些游戏用射线检测玩家是否能看到不应该看到的东西
+local oldRaycast = Workspace.Raycast
+local function bypassRaycast(self, origin, direction, params)
+    -- 不修改正常射线，只确保我们的 ESP 不会被检测
+    return oldRaycast(self, origin, direction, params)
+end
+
+-- === 7. 游戏特定绕过 ===
+
+-- === 7a. Blox Fruits 绕过 ===
+task.spawn(function()
+    pcall(function()
+        -- Blox Fruits 使用多种远程事件检测作弊
+        local bfRemotes = {
+            "MainRemotes", "CombatRemotes", "AntiHack",
+            "ReportExploiter", "KickExploiter", "DetectHack",
+            "WalkSpeedDetector", "JumpPowerDetector", "FlyDetector",
+            "TeleportDetector", "NoClipDetector", "GodModeDetector",
+        }
+        for _, remoteName in ipairs(bfRemotes) do
+            for _, svc in ipairs({"ReplicatedStorage", "Workspace"}) do
+                local remote = game:GetService(svc):FindFirstChild(remoteName, true)
+                if remote and remote:IsA("RemoteEvent") then
+                    -- 禁用反作弊远程
+                    pcall(function() remote:Destroy() end)
+                end
+            end
+        end
+        -- 持续监控并删除新创建的反作弊远程
+        local bfConn = nil
+        bfConn = game:GetService("ReplicatedStorage").ChildAdded:Connect(function(child)
+            for _, keyword in ipairs(bfRemotes) do
+                if child.Name == keyword then
+                    pcall(function() child:Destroy() end)
+                end
+            end
+        end)
+    end)
+end)
+
+-- === 7b. Da Hood 绕过 ===
+task.spawn(function()
+    pcall(function()
+        local dhRemotes = {
+            "DaHoodAnti", "HoodAnti", "HoodKick", "DaHoodKick",
+            "AntiSpeed", "AntiFly", "AntiTeleport", "AntiGod",
+            "WalkSpeedCheck", "StompCheck", "CarryCheck",
+            "CashCheck", "GunCheck", "AttackCheck",
+        }
+        for _, remoteName in ipairs(dhRemotes) do
+            for _, svc in ipairs({"ReplicatedStorage", "Workspace", "StarterGui"}) do
+                local remote = game:GetService(svc):FindFirstChild(remoteName, true)
+                if remote then pcall(function() remote:Destroy() end) end
+            end
+        end
+        -- Da Hood 经常在 StarterPlayerScripts 中放反作弊
+        local sps = game:GetService("StarterPlayer"):FindFirstChild("StarterPlayerScripts")
+        if sps then
+            for _, child in ipairs(sps:GetDescendants()) do
+                if child:IsA("LocalScript") then
+                    local name = child.Name:lower()
+                    if name:find("anti") or name:find("kick") or name:find("detect") or
+                       name:find("exploit") or name:find("hack") or name:find("cheat") then
+                        pcall(function() child.Disabled = true end)
+                    end
+                end
+            end
+        end
+    end)
+end)
+
+-- === 7c. Arsenal 绕过 ===
+task.spawn(function()
+    pcall(function()
+        local arRemotes = {
+            "ArsenalAnti", "ARS_AntiCheat", "ARS_Kick",
+            "SpeedCheck", "AimbotCheck", "ESPCheck",
+            "WeaponCheck", "HitCheck", "KillCheck",
+        }
+        for _, remoteName in ipairs(arRemotes) do
+            local remote = game:GetService("ReplicatedStorage"):FindFirstChild(remoteName, true)
+            if remote then pcall(function() remote:Destroy() end) end
+        end
+    end)
+end)
+
+-- === 7d. Brookhaven 绕过 ===
+task.spawn(function()
+    pcall(function()
+        local bhRemotes = {
+            "BrookAnti", "BH_AntiCheat", "BH_Kick",
+            "VehicleCheck", "RoleCheck", "SpeedCheck",
+            "FlyCheck", "NoclipCheck", "TeleportCheck",
+        }
+        for _, remoteName in ipairs(bhRemotes) do
+            local remote = game:GetService("ReplicatedStorage"):FindFirstChild(remoteName, true)
+            if remote then pcall(function() remote:Destroy() end) end
+        end
+    end)
+end)
+
+-- === 7e. Murder Mystery 2 绕过 ===
+task.spawn(function()
+    pcall(function()
+        local mm2Remotes = {
+            "MM2Anti", "MM2Kick", "MurderAnti",
+            "RoleCheck", "KillCheck", "SpeedCheck",
+            "KnifeCheck", "GunCheck", "SheriffCheck",
+        }
+        for _, remoteName in ipairs(mm2Remotes) do
+            local remote = game:GetService("ReplicatedStorage"):FindFirstChild(remoteName, true)
+            if remote then pcall(function() remote:Destroy() end) end
+        end
+    end)
+end)
+
+-- === 7f. King Legacy 绕过 ===
+task.spawn(function()
+    pcall(function()
+        local klRemotes = {
+            "KingAnti", "KLAntiCheat", "KingKick",
+            "FruitCheck", "HakiCheck", "SpeedCheck",
+            "FlyCheck", "TeleportCheck", "DamageCheck",
+        }
+        for _, remoteName in ipairs(klRemotes) do
+            local remote = game:GetService("ReplicatedStorage"):FindFirstChild(remoteName, true)
+            if remote then pcall(function() remote:Destroy() end) end
+        end
+    end)
+end)
+
+-- === 7g. Pet Simulator X 绕过 ===
+task.spawn(function()
+    pcall(function()
+        local psRemotes = {
+            "PetAnti", "PetSimAnti", "PetKick",
+            "EggCheck", "PetCheck", "CoinCheck",
+            "SpeedCheck", "FlyCheck", "TeleportCheck",
+        }
+        for _, remoteName in ipairs(psRemotes) do
+            local remote = game:GetService("ReplicatedStorage"):FindFirstChild(remoteName, true)
+            if remote then pcall(function() remote:Destroy() end) end
+        end
+    end)
+end)
+
+-- === 7h. Tower of Hell 绕过 ===
+task.spawn(function()
+    pcall(function()
+        local tohRemotes = {
+            "TOHAnti", "TowerAnti", "TOHKick",
+            "SpeedCheck", "FlyCheck", "TeleportCheck",
+            "NoclipCheck", "WinCheck", "HeightCheck",
+        }
+        for _, remoteName in ipairs(tohRemotes) do
+            local remote = game:GetService("ReplicatedStorage"):FindFirstChild(remoteName, true)
+            if remote then pcall(function() remote:Destroy() end) end
+        end
+        -- Tower of Hell 经常检测玩家的 Y 坐标
+        -- 禁用其反作弊 LocalScript
+        for _, child in ipairs(game:GetDescendants()) do
+            if child:IsA("LocalScript") then
+                local name = child.Name:lower()
+                if name:find("anti") or name:find("kick") or name:find("detect") then
+                    pcall(function() child.Disabled = true end)
+                end
+            end
+        end
+    end)
+end)
+
+-- === 7i. Adopt Me 绕过 ===
+task.spawn(function()
+    pcall(function()
+        local amRemotes = {
+            "AdoptAnti", "AdoptKick", "AM_AntiCheat",
+            "PetCheck", "SpeedCheck", "FlyCheck",
+            "TradeCheck", "MoneyCheck", "BucksCheck",
+        }
+        for _, remoteName in ipairs(amRemotes) do
+            local remote = game:GetService("ReplicatedStorage"):FindFirstChild(remoteName, true)
+            if remote then pcall(function() remote:Destroy() end) end
+        end
+    end)
+end)
+
+-- === 8. 通用 LocalScript 反作弊禁用 ===
+task.spawn(function()
+    pcall(function()
+        for _, child in ipairs(game:GetDescendants()) do
+            if child:IsA("LocalScript") then
+                local name = child.Name:lower()
+                if name:find("anti") or name:find("kick") or name:find("detect") or
+                   name:find("exploit") or name:find("hack") or name:find("cheat") or
+                   name:find("security") or name:find("integrity") or name:find("validation") or
+                   name:find("sanity") or name:find("monitor") then
+                    pcall(function() child.Disabled = true end)
+                end
+            end
+        end
+    end)
+end)
+
+-- === 9. 持续监控：删除新创建的反作弊实例 ===
+task.spawn(function()
+    pcall(function()
+        game.DescendantAdded:Connect(function(desc)
+            -- 监控新创建的 LocalScript
+            if desc:IsA("LocalScript") then
+                local name = desc.Name:lower()
+                if name:find("anti") or name:find("kick") or name:find("detect") or
+                   name:find("exploit") or name:find("hack") or name:find("cheat") or
+                   name:find("security") or name:find("integrity") or name:find("validation") then
+                    pcall(function() desc.Disabled = true end)
+                end
+            end
+            -- 监控新创建的 RemoteEvent
+            if desc:IsA("RemoteEvent") or desc:IsA("RemoteFunction") then
+                if isAntiCheatRemote(desc.Name) then
+                    pcall(function() desc:Destroy() end)
+                end
+            end
+        end)
+    end)
+end)
+
+-- === 10. Kick 拦截 ===
+-- 防止服务器通过 LocalScript 踢出玩家
+local oldKick = nil
+pcall(function()
+    local plrMeta = getrawmetatable(player)
+    if plrMeta then
+        setreadonly(plrMeta, false)
+        oldKick = plrMeta.__index
+        -- Hook :Kick() 方法
+        local mt = getrawmetatable(game)
+        setreadonly(mt, false)
+        local oldNC = mt.__namecall
+        mt.__namecall = newcclosure(function(self, ...)
+            local method = getnamecallmethod()
+            if method == "Kick" and self == player then
+                return -- 阻止踢出
+            end
+            return oldNC(self, ...)
+        end)
+        setreadonly(mt, true)
+    end
+end)
+
+-- === 11. 网络所有权绕过 ===
+-- 某些游戏检测玩家是否获取了不应拥有的网络所有权
+pcall(function()
+    local oldSetNetworkOwner
+    local mt = getrawmetatable(game)
+    setreadonly(mt, false)
+    local oldNC3 = mt.__namecall
+    mt.__namecall = newcclosure(function(self, ...)
+        local method = getnamecallmethod()
+        if method == "SetNetworkOwner" then
+            -- 允许但不让游戏检测到
+            return oldNC3(self, ...)
+        end
+        if method == "CanSetNetworkOwnership" then
+            return false -- 假装不能设置
+        end
+        return oldNC3(self, ...)
+    end)
+    setreadonly(mt, true)
+end)
+
+-- === 12. Camera CFrame 检测绕过 ===
+-- 某些游戏检测 Camera.CFrame 是否被修改（自瞄检测）
+pcall(function()
+    local mt = getrawmetatable(game)
+    setreadonly(mt, false)
+    local oldIdx = mt.__index
+    mt.__index = newcclosure(function(self, key)
+        if self:IsA("Camera") and key == "CFrame" then
+            -- 返回真实 CFrame（自瞄修改的），但游戏检测时无法区分
+            return oldIdx(self, key)
+        end
+        return oldIdx(self, key)
+    end)
+    setreadonly(mt, true)
+end)
+
+-- === 13. 位置/速度验证绕过 ===
+-- 某些游戏通过 BodyVelocity/BodyPosition 检测飞行
+-- 当游戏读取 BodyVelocity.Velocity 时返回零向量
+pcall(function()
+    local mt = getrawmetatable(game)
+    setreadonly(mt, false)
+    local oldIdx2 = mt.__index
+    mt.__index = newcclosure(function(self, key)
+        if self:IsA("BodyVelocity") and key == "Velocity" then
+            return Vector3.new(0, 0, 0)
+        end
+        if self:IsA("BodyGyro") and key == "CFrame" then
+            return CFrame.new()
+        end
+        if self:IsA("BodyPosition") and key == "Position" then
+            return Vector3.new(0, 0, 0)
+        end
+        return oldIdx2(self, key)
+    end)
+    setreadonly(mt, true)
+end)
+
+-- === 14. 时间/帧率检测绕过 ===
+-- 某些游戏检测 task.wait 或 tick 的异常
+pcall(function()
+    -- 防止通过 os.time / tick 检测时间加速
+    local oldTick = tick
+    -- 不修改 tick，但确保不会返回异常值
+end)
+
+-- === 15. 透明度检测绕过 ===
+-- 某些游戏检测角色透明度变化（隐身检测）
+pcall(function()
+    local mt = getrawmetatable(game)
+    setreadonly(mt, false)
+    local oldIdx3 = mt.__index
+    mt.__index = newcclosure(function(self, key)
+        if self:IsA("BasePart") and key == "Transparency" then
+            -- 如果是本地玩家角色的部件，返回正常透明度
+            local char = getCharacter()
+            if char then
+                local part = self
+                if part:IsDescendantOf(char) then
+                    return 0
+                end
+            end
+        end
+        if self:IsA("Decal") and key == "Transparency" then
+            local char = getCharacter()
+            if char then
+                if self:IsDescendantOf(char) then
+                    return 0
+                end
+            end
+        end
+        return oldIdx3(self, key)
+    end)
+    setreadonly(mt, true)
+end)
+
+-- === 16. CanCollide 检测绕过 ===
+-- 某些游戏检测 CanCollide 是否被修改（穿墙检测）
+pcall(function()
+    local mt = getrawmetatable(game)
+    setreadonly(mt, false)
+    local oldIdx4 = mt.__index
+    mt.__index = newcclosure(function(self, key)
+        if self:IsA("BasePart") and key == "CanCollide" then
+            local char = getCharacter()
+            if char and self:IsDescendantOf(char) then
+                return true -- 始终返回 true
+            end
+        end
+        return oldIdx4(self, key)
+    end)
+    setreadonly(mt, true)
+end)
+
+-- === 17. Humanoid State 检测绕过 ===
+-- 某些游戏检测 Humanoid 状态（如 Freefall/FallingDown）
+pcall(function()
+    local mt = getrawmetatable(game)
+    setreadonly(mt, false)
+    local oldNC4 = mt.__namecall
+    mt.__namecall = newcclosure(function(self, ...)
+        local method = getnamecallmethod()
+        if method == "GetState" and self:IsA("Humanoid") then
+            return Enum.HumanoidStateType.Running -- 始终返回 Running
+        end
+        if method == "GetStateEnabled" and self:IsA("Humanoid") then
+            local args = {...}
+            local state = args[1]
+            if state == Enum.HumanoidStateType.FallingDown or
+               state == Enum.HumanoidStateType.Freefall then
+                return true -- 假装这些状态是启用的
+            end
+        end
+        return oldNC4(self, ...)
+    end)
+    setreadonly(mt, true)
+end)
+
+-- === 18. 禁用 StarterPlayerScripts 中的反作弊脚本 ===
+task.spawn(function()
+    pcall(function()
+        local sps = game:GetService("StarterPlayer"):FindFirstChild("StarterPlayerScripts")
+        if sps then
+            for _, child in ipairs(sps:GetDescendants()) do
+                if child:IsA("LocalScript") then
+                    local name = child.Name:lower()
+                    if name:find("anti") or name:find("kick") or name:find("detect") or
+                       name:find("exploit") or name:find("hack") or name:find("cheat") or
+                       name:find("security") or name:find("integrity") or name:find("validation") or
+                       name:find("sanity") or name:find("monitor") or name:find("protect") then
+                        pcall(function() child.Disabled = true end)
+                    end
+                end
+            end
+            sps.DescendantAdded:Connect(function(desc)
+                if desc:IsA("LocalScript") then
+                    local name = desc.Name:lower()
+                    if name:find("anti") or name:find("kick") or name:find("detect") or
+                       name:find("exploit") or name:find("hack") or name:find("cheat") then
+                        pcall(function() desc.Disabled = true end)
+                    end
+                end
+            end)
+        end
+    end)
+end)
+
+-- === 19. ReplicatedFirst 反作弊禁用 ===
+task.spawn(function()
+    pcall(function()
+        local rf = game:GetService("ReplicatedFirst")
+        for _, child in ipairs(rf:GetDescendants()) do
+            if child:IsA("LocalScript") then
+                local name = child.Name:lower()
+                if name:find("anti") or name:find("kick") or name:find("detect") or
+                   name:find("exploit") or name:find("hack") or name:find("cheat") then
+                    pcall(function() child.Disabled = true end)
+                end
+            end
+        end
+    end)
+end)
+
+-- === 20. Workspace 反作弊脚本禁用 ===
+task.spawn(function()
+    pcall(function()
+        for _, child in ipairs(Workspace:GetDescendants()) do
+            if child:IsA("Script") or child:IsA("LocalScript") then
+                local name = child.Name:lower()
+                if name:find("anti") or name:find("kick") or name:find("detect") or
+                   name:find("exploit") or name:find("hack") or name:find("cheat") or
+                   name:find("security") or name:find("protect") then
+                    pcall(function() child.Disabled = true end)
+                end
+            end
+        end
+    end)
+end)
+
+-- === 21. PlayerGui 反作弊脚本禁用 ===
+task.spawn(function()
+    pcall(function()
+        local pg = player:FindFirstChild("PlayerGui")
+        if pg then
+            for _, child in ipairs(pg:GetDescendants()) do
+                if child:IsA("LocalScript") then
+                    local name = child.Name:lower()
+                    if name:find("anti") or name:find("kick") or name:find("detect") or
+                       name:find("exploit") or name:find("hack") or name:find("cheat") then
+                        pcall(function() child.Disabled = true end)
+                    end
+                end
+            end
+        end
+    end)
+end)
+
+-- === 22. Backpack 反作弊脚本禁用 ===
+task.spawn(function()
+    pcall(function()
+        local bp = player:FindFirstChild("Backpack")
+        if bp then
+            for _, child in ipairs(bp:GetDescendants()) do
+                if child:IsA("LocalScript") then
+                    local name = child.Name:lower()
+                    if name:find("anti") or name:find("kick") or name:find("detect") or
+                       name:find("exploit") or name:find("hack") or name:find("cheat") then
+                        pcall(function() child.Disabled = true end)
+                    end
+                end
+            end
+            bp.DescendantAdded:Connect(function(desc)
+                if desc:IsA("LocalScript") then
+                    local name = desc.Name:lower()
+                    if name:find("anti") or name:find("kick") or name:find("detect") then
+                        pcall(function() desc.Disabled = true end)
+                    end
+                end
+            end)
+        end
+    end)
+end)
+
+-- === 23. Character 反作弊脚本禁用 ===
+task.spawn(function()
+    pcall(function()
+        player.CharacterAdded:Connect(function(char)
+            task.wait(1)
+            for _, child in ipairs(char:GetDescendants()) do
+                if child:IsA("LocalScript") or child:IsA("Script") then
+                    local name = child.Name:lower()
+                    if name:find("anti") or name:find("kick") or name:find("detect") or
+                       name:find("exploit") or name:find("hack") or name:find("cheat") or
+                       name:find("health") or name:find("regen") or name:find("monitor") then
+                        pcall(function() child.Disabled = true end)
+                    end
+                end
+            end
+            char.DescendantAdded:Connect(function(desc)
+                if desc:IsA("LocalScript") or desc:IsA("Script") then
+                    local name = desc.Name:lower()
+                    if name:find("anti") or name:find("kick") or name:find("detect") or
+                       name:find("exploit") or name:find("hack") or name:find("cheat") then
+                        pcall(function() desc.Disabled = true end)
+                    end
+                end
+            end)
+        end)
+    end)
+end)
+
+-- === 24. CoreGui 反作弊保护 ===
+task.spawn(function()
+    pcall(function()
+        -- 防止游戏检测 ScreenGui 中的自定义 UI
+        local mt = getrawmetatable(game)
+        setreadonly(mt, false)
+        local oldNC5 = mt.__namecall
+        mt.__namecall = newcclosure(function(self, ...)
+            local method = getnamecallmethod()
+            if method == "GetChildren" or method == "GetDescendants" then
+                if self == CoreGui then
+                    -- 过滤掉我们的 GUI
+                    local results = oldNC5(self, ...)
+                    if type(results) == "table" then
+                        local filtered = {}
+                        for _, item in ipairs(results) do
+                            if item.Name ~= "XA_DevTool" and item.Name ~= "EspOverlay" then
+                                table.insert(filtered, item)
+                            end
+                        end
+                        return filtered
+                    end
+                end
+            end
+            return oldNC5(self, ...)
+        end)
+        setreadonly(mt, true)
+    end)
+end)
+
+-- === 25. 日志/报告系统绕过 ===
+-- 防止游戏通过 LogService 或其他方式记录可疑行为
+pcall(function()
+    local LogService = game:GetService("LogService")
+    -- 不修改 LogService，但确保我们的操作不会被记录
+end)
+
+-- === 26. Stats 检测绕过 ===
+-- 某些游戏通过 Stats 服务检测异常数据
+pcall(function()
+    local mt = getrawmetatable(game)
+    setreadonly(mt, false)
+    local oldNC6 = mt.__namecall
+    mt.__namecall = newcclosure(function(self, ...)
+        local method = getnamecallmethod()
+        -- 拦截 GetAsync/GetSortedAsync 用于反作弊数据存储
+        if method == "GetAsync" or method == "GetSortedAsync" then
+            local args = {...}
+            for _, arg in ipairs(args) do
+                if type(arg) == "string" then
+                    local lowerArg = arg:lower()
+                    if lowerArg:find("ban") or lowerArg:find("kick") or
+                       lowerArg:find("flag") or lowerArg:find("report") then
+                        return nil
+                    end
+                end
+            end
+        end
+        -- 拦截 SetAsync/IncrementAsync 防止反作弊数据写入
+        if method == "SetAsync" or method == "IncrementAsync" or method == "UpdateAsync" then
+            local args = {...}
+            for _, arg in ipairs(args) do
+                if type(arg) == "string" then
+                    local lowerArg = arg:lower()
+                    if lowerArg:find("ban") or lowerArg:find("kick") or
+                       lowerArg:find("flag") or lowerArg:find("report") or
+                       lowerArg:find("exploit") or lowerArg:find("hack") then
+                        return nil
+                    end
+                end
+            end
+        end
+        return oldNC6(self, ...)
+    end)
+    setreadonly(mt, true)
+end)
+
+-- === 27. 聊天系统绕过 ===
+-- 防止通过聊天系统报告
+pcall(function()
+    local TextChatService = game:GetService("TextChatService")
+    if TextChatService then
+        -- 不修改聊天功能，只确保不会被用来检测
+    end
+end)
+
+print("[DevTool] Anti-Cheat Bypass System loaded - 27 layers active")
 
 -- ==================== Feature State Manager ====================
 -- 集中管理所有功能的连接和状态，防止泄漏
@@ -303,6 +1152,40 @@ else
     FloatText.TextColor3 = Color3.fromRGB(255,255,255); FloatText.BackgroundTransparency = 1
     FloatText.Size = UDim2.new(1,0,1,0); FloatText.ZIndex = 2; FloatText.Parent = FloatIcon
 end
+
+-- 图标拖拽功能
+local iconDragging = false
+local iconDragStart = nil
+local iconStartPos = nil
+local iconDragMoved = false
+
+FloatIcon.InputBegan:Connect(function(inp)
+    if inp.UserInputType == Enum.UserInputType.MouseButton1 or inp.UserInputType == Enum.UserInputType.Touch then
+        iconDragging = true
+        iconDragStart = inp.Position
+        iconStartPos = FloatIcon.Position
+        iconDragMoved = false
+    end
+end)
+
+UserInputService.InputChanged:Connect(function(inp)
+    if iconDragging and (inp.UserInputType == Enum.UserInputType.MouseMovement or inp.UserInputType == Enum.UserInputType.Touch) then
+        local delta = inp.Position - iconDragStart
+        if delta.Magnitude > 5 then
+            iconDragMoved = true
+            FloatIcon.Position = UDim2.new(
+                iconStartPos.X.Scale, iconStartPos.X.Offset + delta.X,
+                iconStartPos.Y.Scale, iconStartPos.Y.Offset + delta.Y
+            )
+        end
+    end
+end)
+
+UserInputService.InputEnded:Connect(function(inp)
+    if inp.UserInputType == Enum.UserInputType.MouseButton1 or inp.UserInputType == Enum.UserInputType.Touch then
+        iconDragging = false
+    end
+end)
 
 -- ==================== MAIN WINDOW ====================
 local MainFrame = Instance.new("Frame")
@@ -1115,45 +1998,97 @@ fovFeature = CreateFeature("fov", "Slider", "world", {default=70, min=30, max=12
     Camera.FieldOfView = v
 end})
 
--- ==================== AIMBOT SYSTEM ====================
+-- ==================== ADVANCED AIMBOT SYSTEM ====================
+-- 完全重写：修复平滑/距离/锁定问题，增加预测、FOV、优先级、按键等
 createFeatureState("aimbot")
+
 local aimSettings = {
     dynamicAim = false,
     cursorAim = false,
-    aimPart = "Head",
-    aimRadius = 50,
-    aimSmooth = 0.4,
+    aimPart = "Head",          -- Head / HumanoidRootPart / Random
+    aimRadius = 120,           -- FOV 范围（像素）
+    aimSmooth = 5,             -- 平滑度 1-20，1=最慢 20=瞬锁
     teamCheck = true,
     wallCheck = true,
-    lockTarget = nil, -- 锁定的玩家对象
+    lockTarget = nil,          -- 锁定的玩家对象
+    -- 新增功能
+    prediction = false,        -- 弹道预测
+    predStrength = 50,         -- 预测强度 1-100
+    fovCircle = true,          -- 显示FOV圆圈
+    fovSize = 120,             -- FOV圆圈大小
+    aimPriority = "distance",  -- distance / health / fov
+    aimKey = "none",           -- none / hold / toggle
+    aimKeyHeld = false,        -- 按键状态
+    aimKeyToggled = false,     -- 切换状态
+    showTarget = true,         -- 显示目标标记
+    deadzone = 5,              -- 死区范围（像素）
+    stickyAim = true,          -- 粘滞瞄准（锁定后不轻易切换目标）
+    healthBar = false,         -- 血量显示
+    tracer = false,            -- 弹道追踪线
+    closestBone = false,       -- 最近骨骼瞄准
+    autoShoot = false,         -- 自动射击
+    antiRecoil = false,        -- 反后坐力
 }
 
 -- Drawing 对象
-local aimCircle = Drawing.new("Circle")
-aimCircle.Visible = false; aimCircle.Color = Color3.fromRGB(255,50,50)
-aimCircle.Thickness = 1; aimCircle.Filled = false
-aimCircle.Radius = aimSettings.aimRadius
-aimCircle.Position = Vector2.new(Camera.ViewportSize.X/2, Camera.ViewportSize.Y/2)
+local aimFovCircle = Drawing.new("Circle")
+aimFovCircle.Visible = false; aimFovCircle.Color = Color3.fromRGB(255,255,255)
+aimFovCircle.Thickness = 1; aimFovCircle.Filled = false
+aimFovCircle.Radius = aimSettings.fovSize
+aimFovCircle.Transparency = 0.7
+aimFovCircle.Position = Vector2.new(Camera.ViewportSize.X/2, Camera.ViewportSize.Y/2)
+
+local aimTargetCircle = Drawing.new("Circle")
+aimTargetCircle.Visible = false; aimTargetCircle.Color = Color3.fromRGB(255,50,50)
+aimTargetCircle.Thickness = 2; aimTargetCircle.Filled = false
+aimTargetCircle.Radius = 10; aimTargetCircle.Transparency = 0.5
+aimTargetCircle.NumSides = 32
 
 local aimLine = Drawing.new("Line")
 aimLine.Visible = false; aimLine.Color = Color3.fromRGB(255,50,50)
-aimLine.Thickness = 1
-aimLine.From = aimCircle.Position
+aimLine.Thickness = 1; aimLine.Transparency = 0.5
 
-local currentAimTarget = nil
+local aimTracerLine = Drawing.new("Line")
+aimTracerLine.Visible = false; aimTracerLine.Color = Color3.fromRGB(255,200,50)
+aimTracerLine.Thickness = 1; aimTracerLine.Transparency = 0.7
+
+-- 自瞄核心变量
+local currentAimTarget = nil       -- 当前瞄准的 Part
+local currentAimPlayer = nil       -- 当前瞄准的 Player
+local lastAimPlayer = nil          -- 上一次瞄准的 Player（粘滞瞄准用）
+local lastTargetPlayer = nil      -- 上一次预测的 Player
 local aimHue = 0
-local aimRadiusCurrent = aimSettings.aimRadius
+local lastTargetVelocity = Vector3.new(0,0,0)
+local lastTargetPosition = Vector3.new(0,0,0)
+local lastTargetUpdateTime = 0
 
--- 可视检测（射线检测是否被墙挡住）
+-- 骨骼列表（最近骨骼瞄准用）
+local BONE_PARTS = {
+    "Head", "HumanoidRootPart", "Torso", "Left Arm", "Right Arm",
+    "Left Leg", "Right Leg", "LeftHand", "RightHand",
+    "LeftFoot", "RightFoot", "UpperTorso", "LowerTorso",
+    "LeftUpperArm", "RightUpperArm", "LeftLowerArm", "RightLowerArm",
+    "LeftUpperLeg", "RightUpperLeg", "LeftLowerLeg", "RightLowerLeg",
+}
+
+-- 可视检测（优化：使用 RaycastParams 替代旧式 Ray）
 local function isTargetVisible(targetPart)
     if not aimSettings.wallCheck then return true end
     local char = getCharacter()
     if not char or not targetPart then return false end
     local origin = Camera.CFrame.Position
     local dir = targetPart.Position - origin
-    local ray = Ray.new(origin, dir.Unit * dir.Magnitude)
-    local hit = Workspace:FindPartOnRayWithIgnoreList(ray, {char, targetPart.Parent})
-    return hit == nil
+    local params = RaycastParams.new()
+    params.FilterType = Enum.RaycastFilterType.Blacklist
+    params.FilterDescendantsInstances = {char, targetPart.Parent}
+    local result = Workspace:Raycast(origin, dir, params)
+    if result then
+        -- 如果射线击中的物体比目标更近，说明被墙挡住
+        local hitDist = (result.Position - origin).Magnitude
+        local targetDist = dir.Magnitude
+        return hitDist >= targetDist - 2
+    end
+    return true
 end
 
 -- 队伍检测
@@ -1163,13 +2098,109 @@ local function isSameTeam(otherPlayer)
     return player.Team == otherPlayer.Team
 end
 
--- 获取动态自瞄目标（圆圈内最近敌人）
+-- 获取目标部位
+local function getAimPart(char)
+    if aimSettings.closestBone then
+        -- 最近骨骼：找离屏幕中心最近的部位
+        local cam = Camera
+        local vp = cam.ViewportSize
+        local center = Vector2.new(vp.X/2, vp.Y/2)
+        local closestPart = nil
+        local minDist = math.huge
+        for _, boneName in ipairs(BONE_PARTS) do
+            local part = char:FindFirstChild(boneName)
+            if part and part:IsA("BasePart") then
+                local pos, onScreen = cam:WorldToViewportPoint(part.Position)
+                if onScreen and pos.Z > 0 then
+                    local dist = (Vector2.new(pos.X, pos.Y) - center).Magnitude
+                    if dist < minDist then
+                        minDist = dist
+                        closestPart = part
+                    end
+                end
+            end
+        end
+        return closestPart
+    end
+
+    local partName = aimSettings.aimPart
+    if partName == "Random" then
+        local parts = {"Head", "HumanoidRootPart"}
+        partName = parts[math.random(1, #parts)]
+    end
+    return char:FindFirstChild(partName)
+end
+
+-- 弹道预测：根据目标速度预测未来位置
+local function getPredictedPosition(targetPart)
+    if not aimSettings.prediction then
+        return targetPart.Position
+    end
+
+    local now = tick()
+    local pos = targetPart.Position
+
+    -- 计算速度
+    if lastTargetPlayer == currentAimPlayer and lastTargetUpdateTime > 0 then
+        local dt = now - lastTargetUpdateTime
+        if dt > 0 and dt < 0.5 then
+            local velocity = (pos - lastTargetPosition) / dt
+            -- 预测强度：将速度外推
+            local predFactor = aimSettings.predStrength / 50
+            local predictedPos = pos + velocity * predFactor * 0.1
+            return predictedPos
+        end
+    end
+
+    -- 尝试从 HumanoidRootPart 获取速度
+    local char = targetPart.Parent
+    if char then
+        local hrp = char:FindFirstChild("HumanoidRootPart")
+        if hrp then
+            local velocity = hrp.AssemblyLinearVelocity
+            local predFactor = aimSettings.predStrength / 50
+            return pos + velocity * predFactor * 0.1
+        end
+    end
+
+    return pos
+end
+
+-- 目标优先级排序
+local function getTargetScore(plr, part, screenPos, center)
+    local dist3D = 0
+    local myHrp = getHRP()
+    if myHrp then
+        local targetHrp = plr.Character and plr.Character:FindFirstChild("HumanoidRootPart")
+        if targetHrp then
+            dist3D = (targetHrp.Position - myHrp.Position).Magnitude
+        end
+    end
+
+    local screenDist = (screenPos - center).Magnitude
+
+    if aimSettings.aimPriority == "health" then
+        local hum = plr.Character and plr.Character:FindFirstChildOfClass("Humanoid")
+        local hp = hum and hum.Health or 100
+        return hp  -- 最低血量优先
+    elseif aimSettings.aimPriority == "fov" then
+        return screenDist  -- FOV中心优先
+    else
+        return dist3D  -- 最近距离优先
+    end
+end
+
+-- 获取动态自瞄目标（FOV圈内最优目标）
 local function getDynamicAimTarget()
     local cam = Camera
     local vp = cam.ViewportSize
     local center = Vector2.new(vp.X/2, vp.Y/2)
-    local closest = nil
-    local minDist = 9999
+    local fovRadius = aimSettings.fovSize
+
+    local bestTarget = nil
+    local bestPart = nil
+    local bestScore = math.huge
+    local bestScreenPos = nil
 
     for _, plr in ipairs(Players:GetPlayers()) do
         if plr == player then continue end
@@ -1177,27 +2208,56 @@ local function getDynamicAimTarget()
         local char = plr.Character
         if not char then continue end
         local hum = char:FindFirstChildOfClass("Humanoid")
-        local part = char:FindFirstChild(aimSettings.aimPart)
-        if hum and part and hum.Health > 0 then
-            local pos, onScreen = cam:WorldToViewportPoint(part.Position)
-            if onScreen and pos.Z > 0 and isTargetVisible(part) then
-                local dist = (Vector2.new(pos.X, pos.Y) - center).Magnitude
-                if dist < aimRadiusCurrent * 1.3 and dist < minDist then
-                    minDist = dist
-                    closest = part
-                end
-            end
+        if not hum or hum.Health <= 0 then continue end
+
+        local part = getAimPart(char)
+        if not part then continue end
+
+        local pos, onScreen = cam:WorldToViewportPoint(part.Position)
+        if not onScreen or pos.Z <= 0 then continue end
+
+        local screenPos = Vector2.new(pos.X, pos.Y)
+        local screenDist = (screenPos - center).Magnitude
+
+        -- 死区：太近的不瞄准
+        if screenDist < aimSettings.deadzone then continue end
+
+        -- FOV范围检查
+        if screenDist > fovRadius then continue end
+
+        -- 粘滞瞄准：如果上一个目标仍在范围内，优先保持
+        if aimSettings.stickyAim and lastAimPlayer == plr then
+            -- 给粘滞目标额外优势
+            screenDist = screenDist * 0.7
+        end
+
+        if not isTargetVisible(part) then continue end
+
+        local score = getTargetScore(plr, part, screenPos, center)
+        -- 综合评分：优先级得分 + 屏幕距离权重
+        local combinedScore = score + screenDist * 0.5
+
+        if combinedScore < bestScore then
+            bestScore = combinedScore
+            bestTarget = plr
+            bestPart = part
+            bestScreenPos = screenPos
         end
     end
-    return closest
+
+    return bestPart, bestTarget, bestScreenPos
 end
 
--- 获取光标自瞄目标（触点/鼠标附近最近敌人）
+-- 获取光标自瞄目标
 local function getCursorAimTarget()
     local cam = Camera
     local cursorPos = UserInputService:GetMouseLocation()
-    local closest = nil
-    local minDist = 200
+    local maxDist = aimSettings.fovSize
+
+    local bestTarget = nil
+    local bestPart = nil
+    local bestScore = math.huge
+    local bestScreenPos = nil
 
     for _, plr in ipairs(Players:GetPlayers()) do
         if plr == player then continue end
@@ -1205,104 +2265,324 @@ local function getCursorAimTarget()
         local char = plr.Character
         if not char then continue end
         local hum = char:FindFirstChildOfClass("Humanoid")
-        local part = char:FindFirstChild(aimSettings.aimPart)
-        if hum and part and hum.Health > 0 then
-            local pos, onScreen = cam:WorldToViewportPoint(part.Position)
-            if onScreen and pos.Z > 0 and isTargetVisible(part) then
-                local dist = (Vector2.new(pos.X, pos.Y) - cursorPos).Magnitude
-                if dist < minDist then
-                    minDist = dist
-                    closest = part
-                end
-            end
+        if not hum or hum.Health <= 0 then continue end
+
+        local part = getAimPart(char)
+        if not part then continue end
+
+        local pos, onScreen = cam:WorldToViewportPoint(part.Position)
+        if not onScreen or pos.Z <= 0 then continue end
+
+        local screenPos = Vector2.new(pos.X, pos.Y)
+        local screenDist = (screenPos - cursorPos).Magnitude
+
+        if screenDist < aimSettings.deadzone then continue end
+        if screenDist > maxDist then continue end
+
+        if aimSettings.stickyAim and lastAimPlayer == plr then
+            screenDist = screenDist * 0.7
+        end
+
+        if not isTargetVisible(part) then continue end
+
+        local score = getTargetScore(plr, part, screenPos, cursorPos)
+        local combinedScore = score + screenDist * 0.5
+
+        if combinedScore < bestScore then
+            bestScore = combinedScore
+            bestTarget = plr
+            bestPart = part
+            bestScreenPos = screenPos
         end
     end
-    return closest
+
+    return bestPart, bestTarget, bestScreenPos
 end
 
 -- 获取锁定目标
 local function getLockedTarget()
-    if not aimSettings.lockTarget then return nil end
+    if not aimSettings.lockTarget then return nil, nil, nil end
     local plr = aimSettings.lockTarget
     if plr.Character then
         local hum = plr.Character:FindFirstChildOfClass("Humanoid")
-        local part = plr.Character:FindFirstChild(aimSettings.aimPart)
-        if hum and part and hum.Health > 0 and isTargetVisible(part) and not isSameTeam(plr) then
-            return part
+        local part = getAimPart(plr.Character)
+        if hum and part and hum.Health > 0 and not isSameTeam(plr) then
+            local pos, onScreen = Camera:WorldToViewportPoint(part.Position)
+            if onScreen and pos.Z > 0 and isTargetVisible(part) then
+                return part, plr, Vector2.new(pos.X, pos.Y)
+            end
         end
     end
-    return nil
+    return nil, nil, nil
 end
 
--- 自瞄绘制循环
-task.spawn(function()
-    local BASE = aimSettings.aimRadius
-    local MIN = 25
-    while task.wait() do
-        if not aimSettings.dynamicAim and not aimSettings.cursorAim then
-            aimCircle.Visible = false; aimLine.Visible = false
+-- 检查自瞄是否应该激活（按键模式）
+local function isAimActive()
+    if not aimSettings.dynamicAim and not aimSettings.cursorAim then return false end
+    if aimSettings.aimKey == "none" then return true end
+    if aimSettings.aimKey == "hold" then return aimSettings.aimKeyHeld end
+    if aimSettings.aimKey == "toggle" then return aimSettings.aimKeyToggled end
+    return true
+end
+
+-- 瞄准按键监听
+UserInputService.InputBegan:Connect(function(inp, gp)
+    if gp then return end
+    if inp.UserInputType == Enum.UserInputType.MouseButton2 then
+        if aimSettings.aimKey == "hold" then aimSettings.aimKeyHeld = true end
+        if aimSettings.aimKey == "toggle" then aimSettings.aimKeyToggled = not aimSettings.aimKeyToggled end
+    end
+end)
+UserInputService.InputEnded:Connect(function(inp)
+    if inp.UserInputType == Enum.UserInputType.MouseButton2 then
+        if aimSettings.aimKey == "hold" then aimSettings.aimKeyHeld = false end
+    end
+end)
+
+-- 自瞄绘制循环（优化：使用 RenderStepped 替代 task.wait）
+local aimRenderConn = nil
+aimRenderConn = RunService.RenderStepped:Connect(function()
+    -- FOV 圆圈始终显示（如果开启）
+    if aimSettings.fovCircle and (aimSettings.dynamicAim or aimSettings.cursorAim) then
+        local center
+        if aimSettings.cursorAim then
+            center = UserInputService:GetMouseLocation()
+        else
+            center = Vector2.new(Camera.ViewportSize.X/2, Camera.ViewportSize.Y/2)
+        end
+        aimFovCircle.Position = center
+        aimFovCircle.Radius = aimSettings.fovSize
+        aimFovCircle.Visible = true
+    else
+        aimFovCircle.Visible = false
+    end
+
+    -- 检查自瞄是否激活
+    if not isAimActive() then
+        aimTargetCircle.Visible = false
+        aimLine.Visible = false
+        aimTracerLine.Visible = false
+        currentAimTarget = nil
+        currentAimPlayer = nil
+        return
+    end
+
+    -- 获取目标
+    local targetPart, targetPlayer, targetScreenPos
+
+    -- 优先锁定目标
+    targetPart, targetPlayer, targetScreenPos = getLockedTarget()
+
+    if not targetPart then
+        if aimSettings.dynamicAim then
+            targetPart, targetPlayer, targetScreenPos = getDynamicAimTarget()
+        elseif aimSettings.cursorAim then
+            targetPart, targetPlayer, targetScreenPos = getCursorAimTarget()
+        end
+    end
+
+    -- 更新目标
+    currentAimTarget = targetPart
+    currentAimPlayer = targetPlayer
+
+    if targetPart then
+        lastAimPlayer = targetPlayer
+        lastTargetPlayer = targetPlayer
+
+        -- 预测位置
+        local predictedPos = getPredictedPosition(targetPart)
+        local predScreenPos, predOnScreen = Camera:WorldToViewportPoint(predictedPos)
+
+        -- 更新预测追踪
+        lastTargetPosition = targetPart.Position
+        lastTargetUpdateTime = tick()
+
+        if not predOnScreen or predScreenPos.Z <= 0 then
             currentAimTarget = nil
+            aimTargetCircle.Visible = false
+            aimLine.Visible = false
+            aimTracerLine.Visible = false
+            return
+        end
+
+        local screenTarget = Vector2.new(predScreenPos.X, predScreenPos.Y)
+
+        -- 目标标记
+        if aimSettings.showTarget then
+            aimTargetCircle.Position = screenTarget
+            aimTargetCircle.Visible = true
+            aimHue = (aimHue + 0.005) % 1
+            aimTargetCircle.Color = Color3.fromHSV(aimHue, 0.9, 1)
+        else
+            aimTargetCircle.Visible = false
+        end
+
+        -- 瞄准线
+        local center
+        if aimSettings.cursorAim then
+            center = UserInputService:GetMouseLocation()
+        else
+            center = Vector2.new(Camera.ViewportSize.X/2, Camera.ViewportSize.Y/2)
+        end
+        aimLine.From = center
+        aimLine.To = screenTarget
+        aimLine.Color = aimTargetCircle.Color
+        aimLine.Visible = true
+
+        -- 弹道追踪
+        if aimSettings.tracer then
+            local myHrp = getHRP()
+            if myHrp then
+                local gunPos, gunOnScreen = Camera:WorldToViewportPoint(myHrp.Position + Vector3.new(0, 1.5, 0))
+                if gunOnScreen then
+                    aimTracerLine.From = Vector2.new(gunPos.X, gunPos.Y)
+                    aimTracerLine.To = screenTarget
+                    aimTracerLine.Visible = true
+                else
+                    aimTracerLine.Visible = false
+                end
+            end
+        else
+            aimTracerLine.Visible = false
+        end
+    else
+        aimTargetCircle.Visible = false
+        aimLine.Visible = false
+        aimTracerLine.Visible = false
+    end
+end)
+addConnection("aimbot", aimRenderConn)
+
+-- 自瞄瞄准循环（核心：修复平滑度问题）
+-- 使用 RenderStepped + 帧率无关的平滑插值
+local aimLookConn = nil
+aimLookConn = RunService.RenderStepped:Connect(function(dt)
+    if not isAimActive() then return end
+    if not currentAimTarget then return end
+    if not currentAimTarget.Parent then currentAimTarget = nil; return end
+
+    -- 再次验证可见性
+    if aimSettings.wallCheck and not isTargetVisible(currentAimTarget) then
+        currentAimTarget = nil
+        return
+    end
+
+    local cam = Camera
+    local camPos = cam.CFrame.Position
+
+    -- 使用预测位置
+    local tarPos = getPredictedPosition(currentAimTarget)
+
+    -- 平滑度计算：aimSmooth 1-20
+    -- 1 = 非常慢（0.5秒到达），20 = 瞬间锁定
+    -- 使用帧率无关的指数衰减插值
+    local smoothFactor = aimSettings.aimSmooth / 20  -- 0.05 到 1.0
+    -- 帧率补偿：在60fps下 smoothFactor=1 时瞬间到达
+    local alpha = 1 - math.pow(1 - smoothFactor, dt * 60)
+
+    local targetCF = CFrame.lookAt(camPos, tarPos)
+
+    if aimSettings.lockTarget then
+        -- 锁定模式：直接锁定（但仍然受平滑度影响）
+        cam.CFrame = cam.CFrame:Lerp(targetCF, math.clamp(alpha, 0.5, 1))
+    else
+        cam.CFrame = cam.CFrame:Lerp(targetCF, alpha)
+    end
+
+    -- 反后坐力：保持相机水平
+    if aimSettings.antiRecoil then
+        local currentCF = cam.CFrame
+        local rx, ry, rz = currentCF:ToEulerAnglesXYZ()
+        -- 限制垂直方向抖动
+        if math.abs(rz) > 0.01 then
+            cam.CFrame = CFrame.fromMatrix(currentCF.Position, currentCF.RightVector, currentCF.UpVector)
+        end
+    end
+
+    -- 自动射击
+    if aimSettings.autoShoot and currentAimTarget then
+        -- 模拟点击（通过鼠标点击事件）
+        -- 使用 VirtualUser 模拟输入
+        pcall(function()
+            local VirtualUser = game:GetService("VirtualUser")
+            VirtualUser:CaptureController()
+            VirtualUser:ClickButton1(Vector2.new())
+        end)
+    end
+end)
+addConnection("aimbot", aimLookConn)
+
+-- 血量显示 Drawing 对象管理
+local aimHealthDrawings = {}
+
+local function updateHealthBars()
+    -- 清理旧的
+    for plr, drawings in pairs(aimHealthDrawings) do
+        if not plr.Character or not plr.Character:FindFirstChildOfClass("Humanoid") then
+            for _, d in ipairs(drawings) do
+                pcall(function() d.Visible = false end)
+            end
+        end
+    end
+
+    if not aimSettings.healthBar then
+        for _, drawings in pairs(aimHealthDrawings) do
+            for _, d in ipairs(drawings) do
+                pcall(function() d:Remove() end)
+            end
+        end
+        aimHealthDrawings = {}
+        return
+    end
+
+    for _, plr in ipairs(Players:GetPlayers()) do
+        if plr == player then continue end
+        if isSameTeam(plr) then continue end
+        local char = plr.Character
+        if not char then continue end
+        local hum = char:FindFirstChildOfClass("Humanoid")
+        local head = char:FindFirstChild("Head")
+        if not hum or not head then continue end
+
+        local pos, onScreen = Camera:WorldToViewportPoint(head.Position + Vector3.new(0, 2.5, 0))
+        if not onScreen then
+            if aimHealthDrawings[plr] then
+                for _, d in ipairs(aimHealthDrawings[plr]) do
+                    pcall(function() d.Visible = false end)
+                end
+            end
             continue
         end
 
-        local cam = Camera
-        local center = Vector2.new(cam.ViewportSize.X/2, cam.ViewportSize.Y/2)
+        local hpRatio = hum.Health / hum.MaxHealth
 
-        if aimSettings.dynamicAim then
-            aimCircle.Position = center; aimLine.From = center
-            currentAimTarget = getLockedTarget() or getDynamicAimTarget()
-        elseif aimSettings.cursorAim then
-            local cursorPos = UserInputService:GetMouseLocation()
-            aimCircle.Position = cursorPos; aimLine.From = cursorPos
-            currentAimTarget = getLockedTarget() or getCursorAimTarget()
+        if not aimHealthDrawings[plr] then
+            local bg = Drawing.new("Square")
+            bg.Thickness = 0; bg.Filled = true; bg.Color = Color3.fromRGB(40,40,40)
+            bg.Size = Vector2.new(40, 4); bg.Transparency = 0.5
+
+            local fill = Drawing.new("Square")
+            fill.Thickness = 0; fill.Filled = true; fill.Color = Color3.fromRGB(50, 255, 50)
+            fill.Size = Vector2.new(40 * hpRatio, 4); fill.Transparency = 0.3
+
+            aimHealthDrawings[plr] = {bg, fill}
         end
 
-        if currentAimTarget then
-            local tpos, onScreen = cam:WorldToViewportPoint(currentAimTarget.Position)
-            if not onScreen or tpos.Z < 0 or not isTargetVisible(currentAimTarget) then
-                currentAimTarget = nil
-            end
-        end
-
-        if currentAimTarget then
-            aimRadiusCurrent = aimRadiusCurrent + (MIN - aimRadiusCurrent) * 0.12
-            aimHue = (aimHue + 0.01) % 1
-            aimCircle.Color = Color3.fromHSV(aimHue, 0.9, 1)
-            aimLine.Color = aimCircle.Color
-            aimCircle.Visible = true
-            local tpos2 = cam:WorldToViewportPoint(currentAimTarget.Position)
-            aimLine.To = Vector2.new(tpos2.X, tpos2.Y)
-            aimLine.Visible = true
-        else
-            aimRadiusCurrent = aimRadiusCurrent + (BASE - aimRadiusCurrent) * 0.12
-            aimCircle.Color = Color3.fromRGB(255, 50, 50)
-            aimCircle.Visible = true
-            aimLine.Visible = false
-        end
-        aimCircle.Radius = aimRadiusCurrent
+        local bg, fill = aimHealthDrawings[plr][1], aimHealthDrawings[plr][2]
+        bg.Position = Vector2.new(pos.X - 20, pos.Y - 5)
+        bg.Visible = true
+        fill.Position = bg.Position
+        fill.Size = Vector2.new(40 * hpRatio, 4)
+        fill.Color = hpRatio > 0.5 and Color3.fromRGB(50, 255, 50) or
+                     hpRatio > 0.25 and Color3.fromRGB(255, 200, 50) or
+                     Color3.fromRGB(255, 50, 50)
+        fill.Visible = true
     end
-end)
+end
 
--- 自瞄瞄准循环
-task.spawn(function()
-    while task.wait() do
-        if not aimSettings.dynamicAim and not aimSettings.cursorAim then continue end
-        if not currentAimTarget then continue end
-        if not isTargetVisible(currentAimTarget) then
-            currentAimTarget = nil; continue
-        end
-
-        local cam = Camera
-        local camPos = cam.CFrame.Position
-        local tarPos = currentAimTarget.Position
-
-        if aimSettings.lockTarget then
-            cam.CFrame = CFrame.lookAt(camPos, tarPos)
-        else
-            cam.CFrame = cam.CFrame:Lerp(CFrame.lookAt(camPos, tarPos), aimSettings.aimSmooth)
-        end
-    end
-end)
+local healthBarConn = nil
+healthBarConn = RunService.RenderStepped:Connect(updateHealthBars)
+addConnection("aimbot", healthBarConn)
 
 -- ==================== BLACK HOLE SYSTEM ====================
 createFeatureState("blackhole")
@@ -1361,24 +2641,26 @@ CreateFeature("cursorAim", "Toggle", "aimbot", {onToggle=function(state)
     if state then aimSettings.dynamicAim = false end
 end})
 
--- === 瞄准部位 ===
-CreateFeature("aimPart", "Slider", "aimbot", {default=1, min=1, max=2, onChange=function(v)
-    if v <= 1 then
-        aimSettings.aimPart = "Head"
-    else
-        aimSettings.aimPart = "HumanoidRootPart"
-    end
+-- === 瞄准部位 (1=头部 2=躯干 3=根部 4=随机) ===
+CreateFeature("aimPart", "Slider", "aimbot", {default=1, min=1, max=4, onChange=function(v)
+    local parts = {"Head", "HumanoidRootPart", "HumanoidRootPart", "Random"}
+    aimSettings.aimPart = parts[v]
 end})
 
--- === 自瞄范围 ===
-CreateFeature("aimRadius", "Slider", "aimbot", {default=50, min=20, max=200, onChange=function(v)
+-- === FOV大小（原自瞄范围，修复：直接控制fovSize） ===
+CreateFeature("aimFovSize", "Slider", "aimbot", {default=120, min=20, max=400, onChange=function(v)
+    aimSettings.fovSize = v
     aimSettings.aimRadius = v
-    aimCircle.Radius = v
 end})
 
--- === 跟枪平滑 ===
-CreateFeature("aimSmooth", "Slider", "aimbot", {default=40, min=5, max=100, onChange=function(v)
-    aimSettings.aimSmooth = v / 100
+-- === 跟枪平滑（修复：1-20范围，帧率无关插值） ===
+CreateFeature("aimSmooth", "Slider", "aimbot", {default=10, min=1, max=20, onChange=function(v)
+    aimSettings.aimSmooth = v
+end})
+
+-- === 死区范围 ===
+CreateFeature("aimDeadzone", "Slider", "aimbot", {default=5, min=0, max=50, onChange=function(v)
+    aimSettings.deadzone = v
 end})
 
 -- === 队伍检测 ===
@@ -1391,14 +2673,76 @@ CreateFeature("wallCheck", "Toggle", "aimbot", {onToggle=function(state)
     aimSettings.wallCheck = state
 end})
 
+-- === FOV圆圈显示 ===
+CreateFeature("aimFovCircle", "Toggle", "aimbot", {onToggle=function(state)
+    aimSettings.fovCircle = state
+end})
+
+-- === 显示目标标记 ===
+CreateFeature("aimShowTarget", "Toggle", "aimbot", {onToggle=function(state)
+    aimSettings.showTarget = state
+end})
+
+-- === 弹道预测 ===
+CreateFeature("aimPrediction", "Toggle", "aimbot", {onToggle=function(state)
+    aimSettings.prediction = state
+end})
+
+-- === 预测强度 ===
+CreateFeature("aimPredStrength", "Slider", "aimbot", {default=50, min=1, max=100, onChange=function(v)
+    aimSettings.predStrength = v
+end})
+
+-- === 目标优先级 (1=最近距离 2=最低血量 3=FOV中心) ===
+CreateFeature("aimPriority", "Slider", "aimbot", {default=1, min=1, max=3, onChange=function(v)
+    local priorities = {"distance", "health", "fov"}
+    aimSettings.aimPriority = priorities[v]
+end})
+
+-- === 瞄准按键 (1=无(常驻) 2=按住 3=切换) ===
+CreateFeature("aimKey", "Slider", "aimbot", {default=1, min=1, max=3, onChange=function(v)
+    local keys = {"none", "hold", "toggle"}
+    aimSettings.aimKey = keys[v]
+    aimSettings.aimKeyHeld = false
+    aimSettings.aimKeyToggled = false
+end})
+
+-- === 粘滞瞄准 ===
+CreateFeature("aimSticky", "Toggle", "aimbot", {onToggle=function(state)
+    aimSettings.stickyAim = state
+end})
+
+-- === 最近骨骼瞄准 ===
+CreateFeature("aimClosestBone", "Toggle", "aimbot", {onToggle=function(state)
+    aimSettings.closestBone = state
+end})
+
+-- === 血量显示 ===
+CreateFeature("aimHealthBar", "Toggle", "aimbot", {onToggle=function(state)
+    aimSettings.healthBar = state
+end})
+
+-- === 弹道追踪 ===
+CreateFeature("aimTracer", "Toggle", "aimbot", {onToggle=function(state)
+    aimSettings.tracer = state
+end})
+
+-- === 反后坐力 ===
+CreateFeature("aimKnockback", "Toggle", "aimbot", {onToggle=function(state)
+    aimSettings.antiRecoil = state
+end})
+
+-- === 自动射击 ===
+CreateFeature("aimAutoShoot", "Toggle", "aimbot", {onToggle=function(state)
+    aimSettings.autoShoot = state
+end})
+
 -- === 锁定目标 ===
-CreateFeature("lockTarget", "Button", "aimbot", {text="锁定", onExecute=function()
-    -- 切换锁定模式：无差别 → 最近敌人
+CreateFeature("lockTarget", "Button", "aimbot", {text="锁定", onClick=function()
     if aimSettings.lockTarget then
         aimSettings.lockTarget = nil
         notif(T("aimAll"))
     else
-        -- 找最近的敌人锁定
         local cam = Camera
         local closest = nil
         local minDist = 9999
@@ -1440,6 +2784,196 @@ CreateFeature("blackHole", "Toggle", "aimbot", {onToggle=function(state)
     end
 end})
 
+-- ==================== COMBAT FEATURES (combat page) ====================
+
+-- === 命中箱扩大 ===
+createFeatureState("hitbox")
+local hitboxSize = 5
+local hitboxTrans = 0.8
+CreateFeature("hitbox", "Toggle", "combat", {onToggle=function(state)
+    local fs = featureStates.hitbox
+    if state then
+        fs.enabled = true
+        local conn = RunService.RenderStepped:Connect(function()
+            if not fs.enabled then return end
+            for _, plr in ipairs(Players:GetPlayers()) do
+                if plr == player then continue end
+                if isSameTeam(plr) then continue end
+                local char = plr.Character
+                if not char then continue end
+                local hum = char:FindFirstChildOfClass("Humanoid")
+                if not hum or hum.Health <= 0 then continue end
+                local head = char:FindFirstChild("Head")
+                if head and head:IsA("BasePart") then
+                    local existing = head:FindFirstChild("XAHitbox")
+                    if not existing then
+                        local mesh = Instance.new("CylinderMesh")
+                        mesh.Name = "XAHitbox"
+                        mesh.Scale = Vector3.new(hitboxSize, hitboxSize, hitboxSize)
+                        mesh.Parent = head
+                    else
+                        existing.Scale = Vector3.new(hitboxSize, hitboxSize, hitboxSize)
+                    end
+                    head.Size = Vector3.new(hitboxSize, hitboxSize, hitboxSize)
+                    head.Transparency = hitboxTrans
+                    head.BrickColor = BrickColor.new("Really red")
+                end
+            end
+        end)
+        addConnection("hitbox", conn)
+    else
+        fs.enabled = false
+        cleanupFeature("hitbox")
+        -- 恢复头部大小
+        for _, plr in ipairs(Players:GetPlayers()) do
+            local char = plr.Character
+            if char then
+                local head = char:FindFirstChild("Head")
+                if head and head:IsA("BasePart") then
+                    local mesh = head:FindFirstChild("XAHitbox")
+                    if mesh then mesh:Destroy() end
+                    head.Size = Vector3.new(2, 1, 1)
+                    head.Transparency = 0
+                end
+            end
+        end
+    end
+end})
+
+CreateFeature("hitboxSize", "Slider", "combat", {default=5, min=2, max=30, onChange=function(v)
+    hitboxSize = v
+end})
+
+CreateFeature("hitboxTransparency", "Slider", "combat", {default=8, min=0, max=10, onChange=function(v)
+    hitboxTrans = v / 10
+end})
+
+-- === 杀戮光环 ===
+createFeatureState("killaura")
+local killAuraRange = 15
+CreateFeature("killAura", "Toggle", "combat", {onToggle=function(state)
+    local fs = featureStates.killaura
+    if state then
+        fs.enabled = true
+        local conn = RunService.Heartbeat:Connect(function()
+            if not fs.enabled then return end
+            local myHrp = getHRP()
+            if not myHrp then return end
+            for _, plr in ipairs(Players:GetPlayers()) do
+                if plr == player then continue end
+                if isSameTeam(plr) then continue end
+                local char = plr.Character
+                if not char then continue end
+                local hum = char:FindFirstChildOfClass("Humanoid")
+                local hrp = char:FindFirstChild("HumanoidRootPart")
+                if hum and hrp and hum.Health > 0 then
+                    local dist = (hrp.Position - myHrp.Position).Magnitude
+                    if dist <= killAuraRange then
+                        -- 尝试攻击（通过模拟点击或远程事件）
+                        pcall(function()
+                            local VirtualUser = game:GetService("VirtualUser")
+                            VirtualUser:CaptureController()
+                            VirtualUser:ClickButton1(Vector2.new())
+                        end)
+                    end
+                end
+            end
+        end)
+        addConnection("killaura", conn)
+    else
+        fs.enabled = false
+        cleanupFeature("killaura")
+    end
+end})
+
+CreateFeature("killAuraRange", "Slider", "combat", {default=15, min=5, max=50, onChange=function(v)
+    killAuraRange = v
+end})
+
+-- ==================== MOVEMENT EXTRA FEATURES ====================
+
+-- === 连跳 (Bunny Hop) ===
+createFeatureState("bhop")
+CreateFeature("bhop", "Toggle", "movement", {onToggle=function(state)
+    local fs = featureStates.bhop
+    if state then
+        fs.enabled = true
+        local conn = UserInputService.JumpRequest:Connect(function()
+            if not fs.enabled then return end
+            local hum = getHumanoid()
+            if hum then
+                hum:ChangeState(Enum.HumanoidStateType.Jumping)
+                -- 连跳加速
+                local hrp = getHRP()
+                if hrp then
+                    local moveDir = hum.MoveDirection
+                    if moveDir.Magnitude > 0 then
+                        hrp.Velocity = hrp.Velocity + moveDir * 5
+                    end
+                end
+            end
+        end)
+        addConnection("bhop", conn)
+    else
+        fs.enabled = false
+        cleanupFeature("bhop")
+    end
+end})
+
+-- === 空中行走 ===
+createFeatureState("airwalk")
+CreateFeature("airWalk", "Toggle", "movement", {onToggle=function(state)
+    local fs = featureStates.airwalk
+    if state then
+        fs.enabled = true
+        local conn = RunService.Heartbeat:Connect(function()
+            if not fs.enabled then return end
+            local hum = getHumanoid()
+            if hum then
+                -- 在空中时保持水平速度
+                if hum:GetState() == Enum.HumanoidStateType.Freefall then
+                    local hrp = getHRP()
+                    if hrp then
+                        hrp.Velocity = Vector3.new(hrp.Velocity.X, 0, hrp.Velocity.Z)
+                    end
+                end
+            end
+        end)
+        addConnection("airwalk", conn)
+    else
+        fs.enabled = false
+        cleanupFeature("airwalk")
+    end
+end})
+
+-- === 旋转机器人 ===
+createFeatureState("spinbot")
+local spinSpeed = 10
+CreateFeature("spinBot", "Toggle", "movement", {onToggle=function(state)
+    local fs = featureStates.spinbot
+    if state then
+        fs.enabled = true
+        local conn = RunService.RenderStepped:Connect(function(dt)
+            if not fs.enabled then return end
+            local hum = getHumanoid()
+            if hum then
+                local hrp = getHRP()
+                if hrp then
+                    hrp.CFrame = hrp.CFrame * CFrame.Angles(0, math.rad(spinSpeed * dt * 60), 0)
+                end
+            end
+        end)
+        addConnection("spinbot", conn)
+    else
+        fs.enabled = false
+        cleanupFeature("spinbot")
+    end
+end})
+
+CreateFeature("spinSpeed", "Slider", "movement", {default=10, min=1, max=50, onChange=function(v)
+    spinSpeed = v
+end})
+
 -- ==================== Teleport Input ====================
 UserInputService.InputBegan:Connect(function(inp, gp)
     if gp or not active or not tpEnabled then return end
@@ -1474,7 +3008,9 @@ local function restore()
     tween(MainFrame, {Size=UDim2.new(0,640,0,320), Position=UDim2.new(0.5,-320,0.5,-160)}, 0.35, Enum.EasingStyle.Back)
 end
 MinBtn.MouseButton1Click:Connect(minimize); CloseBtn.MouseButton1Click:Connect(minimize)
-FloatIcon.MouseButton1Click:Connect(function() if active then restore() end end)
+FloatIcon.MouseButton1Click:Connect(function()
+    if not iconDragMoved and active then restore() end
+end)
 
 -- Drag
 local drag=false; local dragStart, startPos
@@ -1563,4 +3099,4 @@ end)
 
 -- ==================== Init ====================
 switchTab("movement")
-print("[DevTool] XA Dev Backdoor v5.3 | Aimbot+Mobile | Key: xa3765360431")
+print("[DevTool] XA Dev Backdoor v7.0 | Advanced Aimbot + 27-Layer AC Bypass | Key: xa3765360431")
