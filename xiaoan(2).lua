@@ -1,13 +1,11 @@
 --[[
-    X-Style Dev Backdoor v5.1 (Mobile Landscape)
+    X-Style Dev Backdoor v5.2 (Mobile Touch)
     Key: xa3765360431
-    - GitHub custom images (URL-encoded only)
+    - GitHub images via writefile+getcustomasset (rbxassetid://)
+    - Mobile touch flight (joystick + ↑↓ buttons)
     - Speed boost without WalkSpeed modification (anti-cheat bypass)
+    - Transparent UI layers to show background image
     - All features properly manage connections and state
-    - Character respawn auto-reconnect
-    - Improved flight, ESP, god mode, noclip, invisible
-    - Original values saved for proper restoration
-    - Compact UI for landscape screens
 ]]
 
 -- ==================== GitHub 图片链接 ====================
@@ -29,20 +27,29 @@ local character = player.Character or player.CharacterAdded:Wait()
 local humanoid = character:WaitForChild("Humanoid")
 
 -- ==================== 图片加载函数 ====================
-local function tryLoadImage(url)
-    local success, result = pcall(function()
+-- 使用 writefile + getcustomasset 将网络图片转为 Roblox 可用的 rbxassetid://
+local function tryLoadImage(url, filename)
+    local success, data = pcall(function()
         return game:HttpGet(url)
     end)
-    if success and result then
-        print("[DevTool] 图片加载成功: " .. url)
-        return url
+    if success and data and #data > 0 then
+        pcall(function()
+            writefile(filename, data)
+        end)
+        local assetSuccess, assetId = pcall(function()
+            return getcustomasset(filename)
+        end)
+        if assetSuccess and assetId then
+            print("[DevTool] 图片加载成功: " .. assetId)
+            return assetId
+        end
     end
     warn("[DevTool] 图片加载失败，使用默认显示")
     return nil
 end
 
-local iconImage = tryLoadImage(ICON_URL)
-local bgImage = tryLoadImage(BACKGROUND_URL)
+local iconImage = tryLoadImage(ICON_URL, "XA_Icon.png")
+local bgImage = tryLoadImage(BACKGROUND_URL, "XA_Bg.png")
 
 -- ==================== LANGUAGE ====================
 local Lang = "zh"
@@ -71,7 +78,7 @@ local L = {
     combat = {zh="战斗", en="Fight"},
     world = {zh="世界", en="World"},
     langSwitch = {zh="EN", en="中文"},
-    flyControls = {zh="飞行: WASD移动 Q/E升降 拖动屏幕旋转", en="Fly: WASD move Q/E up/down Drag to rotate"},
+    flyControls = {zh="飞行: 摇杆移动 ↑↓升降 滑动旋转", en="Fly: Joystick move ↑↓Up/Down Swipe rotate"},
     teleported = {zh="已传送", en="Teleported"},
     executed = {zh="已执行", en="executed"},
     activated = {zh="XA DevTool 已激活!", en="XA DevTool Activated!"},
@@ -235,6 +242,8 @@ if iconImage then
     ActIcon.BackgroundTransparency = 1; ActIcon.Image = iconImage
     ActIcon.ScaleType = Enum.ScaleType.Fit; ActIcon.ZIndex = 12; ActIcon.Parent = ActFrame
     XATitle.Visible = false
+else
+    XATitle.Visible = true
 end
 
 local KeyTitle = Instance.new("TextLabel")
@@ -278,21 +287,23 @@ else
     local FloatText = Instance.new("TextLabel"); FloatText.Text = "XA"
     FloatText.Font = Enum.Font.GothamBold; FloatText.TextSize = 22
     FloatText.TextColor3 = Color3.fromRGB(255,255,255); FloatText.BackgroundTransparency = 1
-    FloatText.Size = UDim2.new(1,0,1,0); FloatText.Parent = FloatIcon
+    FloatText.Size = UDim2.new(1,0,1,0); FloatText.ZIndex = 2; FloatText.Parent = FloatIcon
 end
 
 -- ==================== MAIN WINDOW ====================
 local MainFrame = Instance.new("Frame")
 MainFrame.Size = UDim2.new(0, 640, 0, 320); MainFrame.Position = UDim2.new(0.5, -320, 0.5, -160)
-MainFrame.BackgroundColor3 = Color3.fromRGB(0,0,0); MainFrame.BackgroundTransparency = 0.15
+MainFrame.BackgroundColor3 = Color3.fromRGB(0,0,0); MainFrame.BackgroundTransparency = 1
 MainFrame.BorderSizePixel = 0; MainFrame.Visible = false; MainFrame.ClipsDescendants = true; MainFrame.ZIndex = 5; MainFrame.Parent = MainGui
 
 if bgImage then
     local MainBg = Instance.new("ImageLabel"); MainBg.Size = UDim2.new(1,0,1,0); MainBg.Position = UDim2.new(0,0,0,0)
-    MainBg.BackgroundTransparency = 1; MainBg.Image = bgImage; MainBg.ImageTransparency = 0.6
+    MainBg.BackgroundTransparency = 1; MainBg.Image = bgImage; MainBg.ImageTransparency = 0.3
     MainBg.ScaleType = Enum.ScaleType.Crop; MainBg.ZIndex = 0; MainBg.Parent = MainFrame
-    -- 确保背景图在最底层
     MainBg.Name = "MainBg"
+else
+    -- 无背景图时使用半透明黑色背景
+    MainFrame.BackgroundTransparency = 0.15
 end
 
 local MainCorner = Instance.new("UICorner"); MainCorner.CornerRadius = UDim.new(0,24); MainCorner.Parent = MainFrame
@@ -303,13 +314,13 @@ MainStroke.Thickness = 1.5; MainStroke.Parent = MainFrame
 -- Top Bar
 local TopBar = Instance.new("Frame")
 TopBar.Size = UDim2.new(1,0,0,38); TopBar.BackgroundColor3 = Color3.fromRGB(0,0,0)
-TopBar.BackgroundTransparency = 0.3; TopBar.BorderSizePixel = 0; TopBar.ZIndex = 2; TopBar.Parent = MainFrame
+TopBar.BackgroundTransparency = 0.5; TopBar.BorderSizePixel = 0; TopBar.ZIndex = 2; TopBar.Parent = MainFrame
 
 if iconImage then
     local TitleIcon = Instance.new("ImageLabel")
     TitleIcon.Size = UDim2.new(0,22,0,22); TitleIcon.Position = UDim2.new(0,12,0,8)
     TitleIcon.BackgroundTransparency = 1; TitleIcon.Image = iconImage
-    TitleIcon.ScaleType = Enum.ScaleType.Fit; TitleIcon.ZIndex = 3; TitleIcon.Parent = TopBar
+    TitleIcon.ScaleType = Enum.ScaleType.Fit; TitleIcon.ZIndex = 5; TitleIcon.Parent = TopBar
 end
 
 local Title = Instance.new("TextLabel")
@@ -348,7 +359,7 @@ local CloseCorner = Instance.new("UICorner"); CloseCorner.CornerRadius = UDim.ne
 -- Tabs
 local TabBar = Instance.new("Frame")
 TabBar.Size = UDim2.new(1,0,0,34); TabBar.Position = UDim2.new(0,0,0,38)
-TabBar.BackgroundColor3 = Color3.fromRGB(0,0,0); TabBar.BackgroundTransparency = 0.3
+TabBar.BackgroundColor3 = Color3.fromRGB(0,0,0); TabBar.BackgroundTransparency = 0.5
 TabBar.BorderSizePixel = 0; TabBar.ZIndex = 2; TabBar.Parent = MainFrame
 
 local TabIndicator = Instance.new("Frame")
@@ -372,7 +383,7 @@ local pages = {}
 for _, tab in ipairs(tabs) do
     local page = Instance.new("ScrollingFrame")
     page.Size = UDim2.new(1,0,1,-72); page.Position = UDim2.new(0,0,0,72)
-    page.BackgroundColor3 = Color3.fromRGB(0,0,0); page.BackgroundTransparency = 0.4
+    page.BackgroundColor3 = Color3.fromRGB(0,0,0); page.BackgroundTransparency = 0.7
     page.BorderSizePixel = 0; page.ScrollBarThickness = 2
     page.ScrollBarImageColor3 = Color3.fromRGB(29,155,240)
     page.CanvasSize = UDim2.new(0,0,0,0); page.Visible = false; page.ZIndex = 1; page.Parent = MainFrame
@@ -404,7 +415,7 @@ local function CreateFeature(name, type, pageName, opt)
     local container, list = pages[pageName].frame, pages[pageName].list
 
     local Frame = Instance.new("Frame"); Frame.Size = UDim2.new(1,-20,0,42)
-    Frame.BackgroundColor3 = Color3.fromRGB(22,24,28); Frame.BackgroundTransparency = 0.25
+    Frame.BackgroundColor3 = Color3.fromRGB(22,24,28); Frame.BackgroundTransparency = 0.4
     Frame.BorderSizePixel = 0; Frame.ZIndex = 1; Frame.Parent = container
     local FrameCorner = Instance.new("UICorner"); FrameCorner.CornerRadius = UDim.new(0,12); FrameCorner.Parent = Frame
     addShadow(Frame, 3, 3, 12)
@@ -506,7 +517,7 @@ local function CreateFeature(name, type, pageName, opt)
     return feat
 end
 
--- ==================== FLIGHT SYSTEM ====================
+-- ==================== FLIGHT SYSTEM (Mobile Touch) ====================
 local flyState = {
     enabled = false,
     speed = 50,
@@ -517,7 +528,43 @@ local flyState = {
     touchStart = nil,
     cameraAngleX = 0,
     cameraAngleY = 0,
+    flyUp = false,
+    flyDown = false,
 }
+
+-- 飞行触屏按钮
+local flyUpBtn = nil
+local flyDownBtn = nil
+
+local function createFlyButtons()
+    if flyUpBtn then pcall(function() flyUpBtn:Destroy() end) end
+    if flyDownBtn then pcall(function() flyDownBtn:Destroy() end) end
+
+    -- 上升按钮
+    flyUpBtn = Instance.new("TextButton")
+    flyUpBtn.Text = "↑"; flyUpBtn.Font = Enum.Font.GothamBold; flyUpBtn.TextSize = 24
+    flyUpBtn.TextColor3 = Color3.fromRGB(255,255,255); flyUpBtn.BackgroundColor3 = Color3.fromRGB(29,155,240)
+    flyUpBtn.Size = UDim2.new(0, 56, 0, 56); flyUpBtn.Position = UDim2.new(1, -70, 0.5, -70)
+    flyUpBtn.BackgroundTransparency = 0.3; flyUpBtn.BorderSizePixel = 0
+    flyUpBtn.AutoButtonColor = false; flyUpBtn.Visible = false; flyUpBtn.ZIndex = 50; flyUpBtn.Parent = MainGui
+    local upCorner = Instance.new("UICorner"); upCorner.CornerRadius = UDim.new(0, 28); upCorner.Parent = flyUpBtn
+
+    -- 下降按钮
+    flyDownBtn = Instance.new("TextButton")
+    flyDownBtn.Text = "↓"; flyDownBtn.Font = Enum.Font.GothamBold; flyDownBtn.TextSize = 24
+    flyDownBtn.TextColor3 = Color3.fromRGB(255,255,255); flyDownBtn.BackgroundColor3 = Color3.fromRGB(29,155,240)
+    flyDownBtn.Size = UDim2.new(0, 56, 0, 56); flyDownBtn.Position = UDim2.new(1, -70, 0.5, 0)
+    flyDownBtn.BackgroundTransparency = 0.3; flyDownBtn.BorderSizePixel = 0
+    flyDownBtn.AutoButtonColor = false; flyDownBtn.Visible = false; flyDownBtn.ZIndex = 50; flyDownBtn.Parent = MainGui
+    local downCorner = Instance.new("UICorner"); downCorner.CornerRadius = UDim.new(0, 28); downCorner.Parent = flyDownBtn
+
+    -- 触摸事件
+    flyUpBtn.MouseButton1Down:Connect(function() flyState.flyUp = true end)
+    flyUpBtn.MouseButton1Up:Connect(function() flyState.flyUp = false end)
+    flyDownBtn.MouseButton1Down:Connect(function() flyState.flyDown = true end)
+    flyDownBtn.MouseButton1Up:Connect(function() flyState.flyDown = false end)
+end
+createFlyButtons()
 
 local function startFlight()
     local hrp = getHRP()
@@ -538,6 +585,10 @@ local function startFlight()
     flyState.cameraAngleX = math.atan2(lookVector.X, lookVector.Z)
     flyState.cameraAngleY = math.asin(math.clamp(lookVector.Y, -1, 1))
 
+    -- 显示飞行按钮
+    flyUpBtn.Visible = true
+    flyDownBtn.Visible = true
+
     flyState.renderConn = RunService.RenderStepped:Connect(function()
         if not flyState.enabled then return end
         local currentHrp = getHRP()
@@ -545,19 +596,21 @@ local function startFlight()
         if not flyState.bodyGyro or not flyState.bodyGyro.Parent then return end
         if not flyState.bodyVelocity or not flyState.bodyVelocity.Parent then return end
 
-        local cameraCFrame = CFrame.new(Vector3.new(), Vector3.new(
-            math.cos(flyState.cameraAngleY)*math.cos(flyState.cameraAngleX),
-            math.sin(flyState.cameraAngleY),
-            math.cos(flyState.cameraAngleY)*math.sin(flyState.cameraAngleX)))
-        flyState.bodyGyro.CFrame = cameraCFrame + currentHrp.Position
+        -- 跟随摄像机方向
+        local camLook = Camera.CFrame.LookVector
+        local camRight = Camera.CFrame.RightVector
+        flyState.bodyGyro.CFrame = Camera.CFrame
 
+        -- 使用 Humanoid.MoveDirection（手机摇杆自动映射）
+        local hum = getHumanoid()
         local moveDir = Vector3.new()
-        if UserInputService:IsKeyDown(Enum.KeyCode.W) then moveDir += cameraCFrame.LookVector end
-        if UserInputService:IsKeyDown(Enum.KeyCode.S) then moveDir -= cameraCFrame.LookVector end
-        if UserInputService:IsKeyDown(Enum.KeyCode.A) then moveDir -= cameraCFrame.RightVector end
-        if UserInputService:IsKeyDown(Enum.KeyCode.D) then moveDir += cameraCFrame.RightVector end
-        if UserInputService:IsKeyDown(Enum.KeyCode.Q) then moveDir += Vector3.new(0,1,0) end
-        if UserInputService:IsKeyDown(Enum.KeyCode.E) then moveDir -= Vector3.new(0,1,0) end
+        if hum then
+            moveDir = hum.MoveDirection
+        end
+
+        -- 上升/下降
+        if flyState.flyUp then moveDir += Vector3.new(0,1,0) end
+        if flyState.flyDown then moveDir -= Vector3.new(0,1,0) end
 
         if moveDir.Magnitude > 0 then
             flyState.bodyVelocity.Velocity = moveDir.Unit * flyState.speed
@@ -566,9 +619,11 @@ local function startFlight()
         end
     end)
 
+    -- 触摸旋转相机（在屏幕空白区域滑动）
     flyState.touchStart = nil
     flyState.touchConn = UserInputService.TouchMoved:Connect(function(touch, processed)
         if not flyState.enabled then return end
+        if processed then return end
         if not flyState.touchStart then flyState.touchStart = touch.Position; return end
         local delta = touch.Position - flyState.touchStart; local sensitivity = 0.005
         flyState.cameraAngleX = flyState.cameraAngleX - delta.X*sensitivity
@@ -579,11 +634,16 @@ end
 
 local function stopFlight()
     flyState.enabled = false
+    flyState.flyUp = false
+    flyState.flyDown = false
     if flyState.renderConn then pcall(function() flyState.renderConn:Disconnect() end); flyState.renderConn = nil end
     if flyState.touchConn then pcall(function() flyState.touchConn:Disconnect() end); flyState.touchConn = nil end
     if flyState.bodyGyro and flyState.bodyGyro.Parent then flyState.bodyGyro:Destroy() end
     if flyState.bodyVelocity and flyState.bodyVelocity.Parent then flyState.bodyVelocity:Destroy() end
     flyState.bodyGyro = nil; flyState.bodyVelocity = nil; flyState.touchStart = nil
+    -- 隐藏飞行按钮
+    if flyUpBtn then flyUpBtn.Visible = false end
+    if flyDownBtn then flyDownBtn.Visible = false end
 end
 
 -- ==================== FEATURE STATE VARIABLES ====================
@@ -1164,4 +1224,4 @@ end)
 
 -- ==================== Init ====================
 switchTab("movement")
-print("[DevTool] XA Dev Backdoor v5.1 | Improved & Optimized | Key: xa3765360431")
+print("[DevTool] XA Dev Backdoor v5.2 | Mobile Touch | Key: xa3765360431")
