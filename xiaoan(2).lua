@@ -1,5 +1,5 @@
 --[[
-    X-Style Dev Backdoor v7.2 (Anti-267 v3 + No Metatable Hooks + Instance Disguise)
+    X-Style Dev Backdoor v7.3 (Zero Hooks + Adonis Bypass + Instance Disguise)
     Key: xa3765360431
     - 27-layer anti-cheat bypass system (always on)
     - Advanced aimbot with prediction, FOV, priority, keybind, sticky aim, etc.
@@ -145,9 +145,9 @@ local KEY = "xa3765360431"
 local active = false
 
 -- ####################################################################
--- ==================== ANTI-CHEAT BYPASS SYSTEM v3 ==================== --
--- 完全不使用 hookmetamethod / getrawmetatable，避免 267 检测
--- 使用替代方案：hookfunction + 远程销毁 + 脚本禁用 + 实例伪装
+-- ==================== ANTI-CHEAT BYPASS SYSTEM v4 ==================== --
+-- 完全不使用任何钩子（hookmetamethod/hookfunction/getrawmetatable）
+-- 纯销毁/禁用策略 + Adonis专项绕过 + 实例伪装
 -- ####################################################################
 
 -- === 反作弊远程名称库 ===
@@ -198,8 +198,7 @@ local function isACRemote(name)
     return false
 end
 
--- === 伪装名称生成器 ===
--- 用看起来正常的名称替代可疑名称
+-- === 伪装名称 ===
 local FAKE_NAMES = {
     ui = "PlayerList",
     main = "Chat",
@@ -213,35 +212,76 @@ local FAKE_NAMES = {
     icon = "HeadShot",
 }
 
--- === 1. Kick 保护（使用 hookfunction，不修改元表）===
-pcall(function()
-    if hookfunction then
-        local oldKick = player.Kick
-        hookfunction(oldKick, function(self, ...)
-            if self == player then return nil end
-            return oldKick(self, ...)
-        end)
-    end
+-- === 1. Adonis 专项绕过 ===
+-- Adonis 是最常见的反作弊系统，需要专门处理
+-- Adonis 检测：hookfunction/hookmetamethod/异常CoreGui/异常属性
+-- 策略：在 Adonis 加载前/后销毁其所有远程和脚本
+task.spawn(function()
+    pcall(function()
+        -- Adonis 常见存储位置
+        local adonisPaths = {
+            {game:GetService("ReplicatedStorage"), "Adonis"},
+            {game:GetService("ReplicatedStorage"), "Adonis_Loader"},
+            {game:GetService("ReplicatedStorage"), "Admin"},
+            {game:GetService("ReplicatedStorage"), "Server"},
+            {game:GetService("ReplicatedStorage"), "Shared"},
+            {game:GetService("ReplicatedStorage"), "Client"},
+            {game:GetService("ReplicatedStorage"), "Adonis_AntiCheat"},
+            {game:GetService("ReplicatedStorage"), "AC"},
+            {game:GetService("Workspace"), "Adonis"},
+            {game:GetService("Workspace"), "Admin"},
+            {game:GetService("StarterGui"), "Adonis"},
+        }
+        for _, pathData in ipairs(adonisPaths) do
+            local parent = pathData[1]
+            local childName = pathData[2]
+            local child = parent:FindFirstChild(childName)
+            if child then
+                -- 销毁整个 Adonis 文件夹
+                pcall(function() child:Destroy() end)
+            end
+        end
+
+        -- Adonis 常见远程名称
+        local adonisRemotes = {
+            "MainRemote","Remote","AdonisRemote","AdminRemote",
+            "CommandRemote","DataRemote","EventRemote","FunctionRemote",
+            "AntiCheatRemote","DetectionRemote","ReportRemote",
+            "CrossServer","CrossServerRemote","G_API","G_Access",
+            "Adonis_Event","Adonis_Function","Adonis_Data",
+            "Adonis_Loader","Loader","Client","Server",
+        }
+        for _, remoteName in ipairs(adonisRemotes) do
+            for _, svc in ipairs({game:GetService("ReplicatedStorage"), game:GetService("Workspace")}) do
+                local remote = svc:FindFirstChild(remoteName, true)
+                if remote and (remote:IsA("RemoteEvent") or remote:IsA("RemoteFunction")) then
+                    pcall(function() remote:Destroy() end)
+                end
+            end
+        end
+
+        -- Adonis 通常在 ReplicatedStorage 中创建文件夹
+        -- 遍历所有子项，销毁可疑的
+        for _, desc in ipairs(game:GetService("ReplicatedStorage"):GetDescendants()) do
+            if desc:IsA("RemoteEvent") or desc:IsA("RemoteFunction") then
+                local name = desc.Name:lower()
+                if name:find("adonis") or name:find("admin") or name:find("command") or
+                   name:find("detect") or name:find("report") or name:find("anticheat") then
+                    pcall(function() desc:Destroy() end)
+                end
+            end
+        end
+    end)
 end)
 
--- === 2. 远程事件拦截（通过 OnClientEvent，不修改元表）===
--- 对已知的反作弊远程，连接 OnClientEvent 并忽略所有数据
+-- === 2. 通用反作弊远程销毁 ===
 task.spawn(function()
     pcall(function()
         for _, desc in ipairs(game:GetDescendants()) do
-            if desc:IsA("RemoteEvent") then
+            if desc:IsA("RemoteEvent") or desc:IsA("RemoteFunction") then
                 if isACRemote(desc.Name) then
-                    -- 直接销毁反作弊远程
                     pcall(function() desc:Destroy() end)
-                else
-                    -- 对可疑远程，连接 OnClientEvent 忽略数据
-                    pcall(function()
-                        desc.OnClientEvent:Connect(function() end)
-                    end)
                 end
-            end
-            if desc:IsA("RemoteFunction") and isACRemote(desc.Name) then
-                pcall(function() desc:Destroy() end)
             end
         end
     end)
@@ -256,7 +296,8 @@ task.spawn(function()
                 if name:find("anti") or name:find("kick") or name:find("detect") or
                    name:find("exploit") or name:find("hack") or name:find("cheat") or
                    name:find("security") or name:find("integrity") or name:find("validation") or
-                   name:find("sanity") or name:find("monitor") or name:find("protect") then
+                   name:find("sanity") or name:find("monitor") or name:find("protect") or
+                   name:find("adonis") or name:find("admin") or name:find("loader") then
                     pcall(function() child.Disabled = true end)
                 end
             end
@@ -268,19 +309,24 @@ end)
 task.spawn(function()
     pcall(function()
         game.DescendantAdded:Connect(function(desc)
-            -- 禁用反作弊脚本
             if desc:IsA("LocalScript") then
                 local name = desc.Name:lower()
                 if name:find("anti") or name:find("kick") or name:find("detect") or
                    name:find("exploit") or name:find("hack") or name:find("cheat") or
                    name:find("security") or name:find("integrity") or name:find("validation") or
-                   name:find("monitor") or name:find("protect") then
+                   name:find("monitor") or name:find("protect") or
+                   name:find("adonis") or name:find("admin") or name:find("loader") then
                     task.defer(function() pcall(function() desc.Disabled = true end) end)
                 end
             end
-            -- 销毁反作弊远程
-            if (desc:IsA("RemoteEvent") or desc:IsA("RemoteFunction")) and isACRemote(desc.Name) then
-                task.defer(function() pcall(function() desc:Destroy() end) end)
+            if (desc:IsA("RemoteEvent") or desc:IsA("RemoteFunction")) then
+                if isACRemote(desc.Name) then
+                    task.defer(function() pcall(function() desc:Destroy() end) end)
+                end
+                local name = desc.Name:lower()
+                if name:find("adonis") or name:find("admin") or name:find("command") then
+                    task.defer(function() pcall(function() desc:Destroy() end) end)
+                end
             end
         end)
     end)
@@ -296,7 +342,8 @@ task.spawn(function()
                     local name = child.Name:lower()
                     if name:find("anti") or name:find("kick") or name:find("detect") or
                        name:find("exploit") or name:find("hack") or name:find("cheat") or
-                       name:find("health") or name:find("regen") or name:find("monitor") then
+                       name:find("health") or name:find("regen") or name:find("monitor") or
+                       name:find("adonis") or name:find("admin") then
                         pcall(function() child.Disabled = true end)
                     end
                 end
@@ -305,7 +352,8 @@ task.spawn(function()
                 if desc:IsA("LocalScript") or desc:IsA("Script") then
                     local name = desc.Name:lower()
                     if name:find("anti") or name:find("kick") or name:find("detect") or
-                       name:find("exploit") or name:find("hack") or name:find("cheat") then
+                       name:find("exploit") or name:find("hack") or name:find("cheat") or
+                       name:find("adonis") or name:find("admin") then
                         pcall(function() desc.Disabled = true end)
                     end
                 end
@@ -330,7 +378,8 @@ task.spawn(function()
                         local name = child.Name:lower()
                         if name:find("anti") or name:find("kick") or name:find("detect") or
                            name:find("exploit") or name:find("hack") or name:find("cheat") or
-                           name:find("security") or name:find("protect") then
+                           name:find("security") or name:find("protect") or
+                           name:find("adonis") or name:find("admin") then
                             pcall(function() child.Disabled = true end)
                         end
                     end
@@ -339,7 +388,8 @@ task.spawn(function()
                     if desc:IsA("LocalScript") then
                         local name = desc.Name:lower()
                         if name:find("anti") or name:find("kick") or name:find("detect") or
-                           name:find("exploit") or name:find("hack") or name:find("cheat") then
+                           name:find("exploit") or name:find("hack") or name:find("cheat") or
+                           name:find("adonis") or name:find("admin") then
                             pcall(function() desc.Disabled = true end)
                         end
                     end
@@ -349,29 +399,12 @@ task.spawn(function()
     end)
 end)
 
--- === 7. 属性保护循环（替代 __index 钩子）===
--- 不修改元表，而是在 RenderStepped 中持续重置属性为正常值
--- 当功能启用时，在功能代码中直接修改属性，此循环确保反作弊读取时看到正常值
-local acPropertyLoopConn = nil
-task.spawn(function()
-    pcall(function()
-        acPropertyLoopConn = RunService.Heartbeat:Connect(function()
-            local char = player.Character
-            if not char or not char.Parent then return end
-            local hum = char:FindFirstChildOfClass("Humanoid")
-            if not hum then return end
-            -- 只在属性被修改时才重置
-            -- 速度和跳跃由功能代码直接控制
-            -- 无敌模式在功能循环中处理
-        end)
-    end)
-end)
+-- === 7. CoreGui 保护 ===
+-- Adonis 会扫描 CoreGui 中的自定义 ScreenGui
+-- 我们的 UI 使用伪装名称，且 ResetOnSpawn = false
+-- 如果仍然被检测，可以改为 Parent 到 PlayerGui
 
--- === 8. UI 伪装 ===
--- 所有 ScreenGui 和实例使用看起来正常的名称
--- 在 UI 创建代码中已使用 FAKE_NAMES
-
-print("[DevTool] Anti-Cheat Bypass v3 loaded - No metatable hooks")
+print("[DevTool] Anti-Cheat Bypass v4 loaded - Zero hooks, Adonis bypass")
 
 -- ==================== Feature State Manager ====================
 -- 集中管理所有功能的连接和状态，防止泄漏
@@ -2520,4 +2553,4 @@ end)
 
 -- ==================== Init ====================
 switchTab("movement")
-print("[DevTool] XA Dev Backdoor v7.2 | Anti-267 v3 | No Metatable Hooks | Key: xa3765360431")
+print("[DevTool] XA Dev Backdoor v7.3 | Zero Hooks + Adonis Bypass | Key: xa3765360431")
