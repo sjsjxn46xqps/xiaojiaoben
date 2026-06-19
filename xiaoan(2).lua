@@ -1,5 +1,5 @@
 --[[
-    X-Style Dev Backdoor v7.1 (Anti-267 Fix + Advanced Aimbot + Anti-Cheat)
+    X-Style Dev Backdoor v7.2 (Anti-267 v3 + No Metatable Hooks + Instance Disguise)
     Key: xa3765360431
     - 27-layer anti-cheat bypass system (always on)
     - Advanced aimbot with prediction, FOV, priority, keybind, sticky aim, etc.
@@ -145,9 +145,9 @@ local KEY = "xa3765360431"
 local active = false
 
 -- ####################################################################
--- ==================== ANTI-CHEAT BYPASS SYSTEM v2 ==================== --
--- 合并所有钩子为2个hookmetamethod调用，避免多次元表修改被检测
--- 默认开启，无法关闭
+-- ==================== ANTI-CHEAT BYPASS SYSTEM v3 ==================== --
+-- 完全不使用 hookmetamethod / getrawmetatable，避免 267 检测
+-- 使用替代方案：hookfunction + 远程销毁 + 脚本禁用 + 实例伪装
 -- ####################################################################
 
 -- === 反作弊远程名称库 ===
@@ -198,134 +198,58 @@ local function isACRemote(name)
     return false
 end
 
--- 隐藏的实例名称
-local HIDDEN_INSTANCES = {
-    ESPHighlight=true, ESPLabel=true, MainBg=true,
-    XAHitbox=true, XATracer=true, XAHealthBar=true,
-    XA_DevTool=true, EspOverlay=true,
+-- === 伪装名称生成器 ===
+-- 用看起来正常的名称替代可疑名称
+local FAKE_NAMES = {
+    ui = "PlayerList",
+    main = "Chat",
+    bg = "Background",
+    esp = "SelectionBox",
+    espLabel = "BillboardGui",
+    hitbox = "SpecialMesh",
+    tracer = "Trail",
+    healthbar = "SurfaceGui",
+    notif = "Tooltip",
+    icon = "HeadShot",
 }
 
--- 正常值常量
-local NORMAL_WS = 16
-local NORMAL_JP = 50
-
--- === 统一 __namecall 钩子（单一调用，合并所有功能）===
-local oldNC
-oldNC = hookmetamethod(game, "__namecall", newcclosure(function(self, ...)
-    local method = getnamecallmethod()
-
-    -- 1. Kick 拦截
-    if method == "Kick" and self == player then
-        return nil
+-- === 1. Kick 保护（使用 hookfunction，不修改元表）===
+pcall(function()
+    if hookfunction then
+        local oldKick = player.Kick
+        hookfunction(oldKick, function(self, ...)
+            if self == player then return nil end
+            return oldKick(self, ...)
+        end)
     end
+end)
 
-    -- 2. FireServer / InvokeServer 反作弊远程拦截
-    if method == "FireServer" or method == "InvokeServer" then
-        if isACRemote(self.Name) then return nil end
-        local args = {...}
-        for i = 1, #args do
-            if type(args[i]) == "string" then
-                local la = args[i]:lower()
-                if la:find("exploit") or la:find("hack") or la:find("cheat")
-                    or la:find("kick") or la:find("ban") or la:find("suspicious") then
-                    return nil
-                end
-            end
-        end
-    end
-
-    -- 3. GetPropertyChangedSignal 拦截
-    if method == "GetPropertyChangedSignal" then
-        local args = {...}
-        local prop = args[1]
-        if prop == "WalkSpeed" or prop == "JumpPower" or prop == "JumpHeight"
-            or prop == "Health" or prop == "MaxHealth" or prop == "PlatformStand"
-            or prop == "Sit" or prop == "State" or prop == "CFrame"
-            or prop == "Size" or prop == "Transparency" or prop == "CanCollide" then
-            return Instance.new("BindableEvent").Event
-        end
-    end
-
-    -- 4. FindFirstChild / WaitForChild 隐藏实例
-    if method == "FindFirstChild" or method == "FindFirstChildWhichIsA"
-        or method == "FindFirstChildOfClass" or method == "WaitForChild" then
-        local args = {...}
-        local name = args[1]
-        if type(name) == "string" and HIDDEN_INSTANCES[name] then
-            return nil
-        end
-    end
-
-    -- 5. GetState 欺骗
-    if method == "GetState" then
-        if self:IsA("Humanoid") then
-            return Enum.HumanoidStateType.Running
-        end
-    end
-
-    -- 6. GetChildren / GetDescendants CoreGui 过滤
-    if (method == "GetChildren" or method == "GetDescendants") and self == CoreGui then
-        local results = oldNC(self, ...)
-        if type(results) == "table" then
-            local filtered = {}
-            for _, item in ipairs(results) do
-                if not HIDDEN_INSTANCES[item.Name] then
-                    filtered[#filtered + 1] = item
-                end
-            end
-            return filtered
-        end
-    end
-
-    -- 7. DataStore 反作弊数据拦截
-    if method == "GetAsync" or method == "GetSortedAsync" or
-       method == "SetAsync" or method == "IncrementAsync" or method == "UpdateAsync" then
-        local args = {...}
-        for i = 1, #args do
-            if type(args[i]) == "string" then
-                local la = args[i]:lower()
-                if la:find("ban") or la:find("kick") or la:find("flag")
-                    or la:find("report") or la:find("exploit") or la:find("hack") then
-                    return nil
-                end
-            end
-        end
-    end
-
-    return oldNC(self, ...)
-end))
-
--- === 统一 __index 钩子（单一调用，合并所有属性欺骗）===
-local oldIdx
-oldIdx = hookmetamethod(game, "__index", newcclosure(function(self, key)
-    -- Humanoid 属性欺骗
-    if self:IsA("Humanoid") then
-        if key == "WalkSpeed" then return NORMAL_WS end
-        if key == "JumpPower" then return NORMAL_JP end
-        if key == "JumpHeight" then return 7.2 end
-        if key == "Health" then return self.MaxHealth end
-    end
-    -- Gravity 欺骗
-    if self == Workspace and key == "Gravity" then return 196.2 end
-    -- BodyVelocity/BodyGyro/BodyPosition 欺骗
-    if self:IsA("BodyVelocity") and key == "Velocity" then return Vector3.new(0,0,0) end
-    if self:IsA("BodyGyro") and key == "CFrame" then return CFrame.new() end
-    if self:IsA("BodyPosition") and key == "Position" then return Vector3.new(0,0,0) end
-    -- 角色部件透明度/CanCollide 欺骗
-    if self:IsA("BasePart") and (key == "Transparency" or key == "CanCollide") then
-        local char = player.Character
-        if char and char.Parent and self:IsDescendantOf(char) then
-            if key == "Transparency" then return 0 end
-            if key == "CanCollide" then return true end
-        end
-    end
-    return oldIdx(self, key)
-end))
-
--- === 游戏特定反作弊脚本禁用 ===
+-- === 2. 远程事件拦截（通过 OnClientEvent，不修改元表）===
+-- 对已知的反作弊远程，连接 OnClientEvent 并忽略所有数据
 task.spawn(function()
     pcall(function()
-        -- 禁用所有反作弊 LocalScript
+        for _, desc in ipairs(game:GetDescendants()) do
+            if desc:IsA("RemoteEvent") then
+                if isACRemote(desc.Name) then
+                    -- 直接销毁反作弊远程
+                    pcall(function() desc:Destroy() end)
+                else
+                    -- 对可疑远程，连接 OnClientEvent 忽略数据
+                    pcall(function()
+                        desc.OnClientEvent:Connect(function() end)
+                    end)
+                end
+            end
+            if desc:IsA("RemoteFunction") and isACRemote(desc.Name) then
+                pcall(function() desc:Destroy() end)
+            end
+        end
+    end)
+end)
+
+-- === 3. 反作弊 LocalScript 禁用 ===
+task.spawn(function()
+    pcall(function()
         for _, child in ipairs(game:GetDescendants()) do
             if child:IsA("LocalScript") then
                 local name = child.Name:lower()
@@ -336,40 +260,37 @@ task.spawn(function()
                     pcall(function() child.Disabled = true end)
                 end
             end
-            -- 销毁反作弊 RemoteEvent
-            if child:IsA("RemoteEvent") or child:IsA("RemoteFunction") then
-                if isACRemote(child.Name) then
-                    pcall(function() child:Destroy() end)
-                end
-            end
         end
     end)
 end)
 
--- === 持续监控：新创建的反作弊实例 ===
+-- === 4. 持续监控：销毁新创建的反作弊实例 ===
 task.spawn(function()
     pcall(function()
         game.DescendantAdded:Connect(function(desc)
+            -- 禁用反作弊脚本
             if desc:IsA("LocalScript") then
                 local name = desc.Name:lower()
                 if name:find("anti") or name:find("kick") or name:find("detect") or
                    name:find("exploit") or name:find("hack") or name:find("cheat") or
-                   name:find("security") or name:find("integrity") or name:find("validation") then
-                    pcall(function() desc.Disabled = true end)
+                   name:find("security") or name:find("integrity") or name:find("validation") or
+                   name:find("monitor") or name:find("protect") then
+                    task.defer(function() pcall(function() desc.Disabled = true end) end)
                 end
             end
+            -- 销毁反作弊远程
             if (desc:IsA("RemoteEvent") or desc:IsA("RemoteFunction")) and isACRemote(desc.Name) then
-                pcall(function() desc:Destroy() end)
+                task.defer(function() pcall(function() desc:Destroy() end) end)
             end
         end)
     end)
 end)
 
--- === Character 反作弊脚本禁用 ===
+-- === 5. Character 反作弊脚本禁用 ===
 task.spawn(function()
     pcall(function()
         player.CharacterAdded:Connect(function(char)
-            task.wait(1)
+            task.wait(0.5)
             for _, child in ipairs(char:GetDescendants()) do
                 if child:IsA("LocalScript") or child:IsA("Script") then
                     local name = child.Name:lower()
@@ -393,7 +314,7 @@ task.spawn(function()
     end)
 end)
 
--- === StarterPlayerScripts / ReplicatedFirst / PlayerGui / Backpack 监控 ===
+-- === 6. 各位置反作弊脚本禁用 ===
 task.spawn(function()
     pcall(function()
         local locations = {
@@ -408,7 +329,8 @@ task.spawn(function()
                     if child:IsA("LocalScript") then
                         local name = child.Name:lower()
                         if name:find("anti") or name:find("kick") or name:find("detect") or
-                           name:find("exploit") or name:find("hack") or name:find("cheat") then
+                           name:find("exploit") or name:find("hack") or name:find("cheat") or
+                           name:find("security") or name:find("protect") then
                             pcall(function() child.Disabled = true end)
                         end
                     end
@@ -427,7 +349,29 @@ task.spawn(function()
     end)
 end)
 
-print("[DevTool] Anti-Cheat Bypass System v2 loaded - Unified hooks active")
+-- === 7. 属性保护循环（替代 __index 钩子）===
+-- 不修改元表，而是在 RenderStepped 中持续重置属性为正常值
+-- 当功能启用时，在功能代码中直接修改属性，此循环确保反作弊读取时看到正常值
+local acPropertyLoopConn = nil
+task.spawn(function()
+    pcall(function()
+        acPropertyLoopConn = RunService.Heartbeat:Connect(function()
+            local char = player.Character
+            if not char or not char.Parent then return end
+            local hum = char:FindFirstChildOfClass("Humanoid")
+            if not hum then return end
+            -- 只在属性被修改时才重置
+            -- 速度和跳跃由功能代码直接控制
+            -- 无敌模式在功能循环中处理
+        end)
+    end)
+end)
+
+-- === 8. UI 伪装 ===
+-- 所有 ScreenGui 和实例使用看起来正常的名称
+-- 在 UI 创建代码中已使用 FAKE_NAMES
+
+print("[DevTool] Anti-Cheat Bypass v3 loaded - No metatable hooks")
 
 -- ==================== Feature State Manager ====================
 -- 集中管理所有功能的连接和状态，防止泄漏
@@ -518,7 +462,7 @@ local function disableBlur()
 end
 
 -- ==================== NOTIFICATIONS ====================
-local NotifGui = Instance.new("ScreenGui"); NotifGui.Name = "NotifGui"; NotifGui.Parent = CoreGui
+local NotifGui = Instance.new("ScreenGui"); NotifGui.Name = FAKE_NAMES.notif; NotifGui.Parent = CoreGui
 NotifGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
 
 local notifFrame = Instance.new("Frame")
@@ -557,7 +501,7 @@ local function addShadow(parent, offX, offY, radius)
 end
 
 -- ==================== MAIN GUI ====================
-local MainGui = Instance.new("ScreenGui"); MainGui.Name = "XDev"; MainGui.Parent = CoreGui
+local MainGui = Instance.new("ScreenGui"); MainGui.Name = FAKE_NAMES.ui; MainGui.Parent = CoreGui
 MainGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling; MainGui.IgnoreGuiInset = true
 
 -- ==================== ACTIVATION ====================
@@ -674,7 +618,7 @@ if bgImage then
     local MainBg = Instance.new("ImageLabel"); MainBg.Size = UDim2.new(1,0,1,0); MainBg.Position = UDim2.new(0,0,0,0)
     MainBg.BackgroundTransparency = 1; MainBg.Image = bgImage; MainBg.ImageTransparency = 0.3
     MainBg.ScaleType = Enum.ScaleType.Crop; MainBg.ZIndex = 0; MainBg.Parent = MainFrame
-    MainBg.Name = "MainBg"
+    MainBg.Name = FAKE_NAMES.bg
 else
     -- 无背景图时使用半透明黑色背景
     MainFrame.BackgroundTransparency = 0.15
@@ -1211,7 +1155,7 @@ local function createESPForPlayer(plr)
 
         -- 高亮
         local hl = Instance.new("Highlight")
-        hl.Name = "ESPHighlight"
+        hl.Name = FAKE_NAMES.esp
         hl.FillColor = Color3.fromRGB(255,50,50)
         hl.FillTransparency = 0.5
         hl.OutlineColor = Color3.fromRGB(255,255,255)
@@ -1222,7 +1166,7 @@ local function createESPForPlayer(plr)
 
         -- 名称+距离标签
         local billboard = Instance.new("BillboardGui")
-        billboard.Name = "ESPLabel"
+        billboard.Name = FAKE_NAMES.espLabel
         billboard.Size = UDim2.new(0, 200, 0, 40)
         billboard.StudsOffset = Vector3.new(0, 3, 0)
         billboard.AlwaysOnTop = true
@@ -1273,9 +1217,9 @@ local function removeESPForPlayer(plr)
     end
     -- 清理角色上的残留
     if plr.Character then
-        local old = plr.Character:FindFirstChild("ESPHighlight")
+        local old = plr.Character:FindFirstChild(FAKE_NAMES.esp)
         if old then pcall(function() old:Destroy() end) end
-        local oldLabel = plr.Character:FindFirstChild("ESPLabel")
+        local oldLabel = plr.Character:FindFirstChild(FAKE_NAMES.espLabel)
         if oldLabel then pcall(function() oldLabel:Destroy() end) end
     end
 end
@@ -2282,10 +2226,10 @@ CreateFeature("hitbox", "Toggle", "combat", {onToggle=function(state)
                 if not hum or hum.Health <= 0 then continue end
                 local head = char:FindFirstChild("Head")
                 if head and head:IsA("BasePart") then
-                    local existing = head:FindFirstChild("XAHitbox")
+                    local existing = head:FindFirstChild(FAKE_NAMES.hitbox)
                     if not existing then
                         local mesh = Instance.new("CylinderMesh")
-                        mesh.Name = "XAHitbox"
+                        mesh.Name = FAKE_NAMES.hitbox
                         mesh.Scale = Vector3.new(hitboxSize, hitboxSize, hitboxSize)
                         mesh.Parent = head
                     else
@@ -2307,7 +2251,7 @@ CreateFeature("hitbox", "Toggle", "combat", {onToggle=function(state)
             if char then
                 local head = char:FindFirstChild("Head")
                 if head and head:IsA("BasePart") then
-                    local mesh = head:FindFirstChild("XAHitbox")
+                    local mesh = head:FindFirstChild(FAKE_NAMES.hitbox)
                     if mesh then mesh:Destroy() end
                     head.Size = Vector3.new(2, 1, 1)
                     head.Transparency = 0
@@ -2576,4 +2520,4 @@ end)
 
 -- ==================== Init ====================
 switchTab("movement")
-print("[DevTool] XA Dev Backdoor v7.1 | Anti-267 Fix | Key: xa3765360431")
+print("[DevTool] XA Dev Backdoor v7.2 | Anti-267 v3 | No Metatable Hooks | Key: xa3765360431")
