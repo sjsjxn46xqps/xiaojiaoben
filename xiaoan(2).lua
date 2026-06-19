@@ -1,25 +1,18 @@
 --[[
-    X-Style Dev Backdoor v5.0 (Mobile Landscape)
+    X-Style Dev Backdoor v5.1 (Mobile Landscape)
     Key: xa3765360431
-    - GitHub custom images fully integrated
-    - Dual URL encoding support (Chinese + URL-encoded)
-    - Auto-fallback to text if images unavailable
+    - GitHub custom images (URL-encoded only)
+    - Speed boost without WalkSpeed modification (anti-cheat bypass)
     - All features properly manage connections and state
     - Character respawn auto-reconnect
     - Improved flight, ESP, god mode, noclip, invisible
     - Original values saved for proper restoration
+    - Compact UI for landscape screens
 ]]
 
 -- ==================== GitHub 图片链接 ====================
-local ICON_URLS = {
-    "https://raw.githubusercontent.com/sjsjxn46xqps/xiaojiaoben/refs/heads/main/XA%E5%9B%BE%E6%A0%87.png",
-    "https://raw.githubusercontent.com/sjsjxn46xqps/xiaojiaoben/refs/heads/main/XA图标.png"
-}
-
-local BACKGROUND_URLS = {
-    "https://raw.githubusercontent.com/sjsjxn46xqps/xiaojiaoben/refs/heads/main/XA%E8%8F%9C%E5%8D%95%E8%83%8C%E6%99%AF.png",
-    "https://raw.githubusercontent.com/sjsjxn46xqps/xiaojiaoben/refs/heads/main/XA菜单背景.png"
-}
+local ICON_URL = "https://raw.githubusercontent.com/sjsjxn46xqps/xiaojiaoben/refs/heads/main/XA%E5%9B%BE%E6%A0%87.png"
+local BACKGROUND_URL = "https://raw.githubusercontent.com/sjsjxn46xqps/xiaojiaoben/refs/heads/main/XA%E8%8F%9C%E5%8D%95%E8%83%8C%E6%99%AF.png"
 
 -- ==================== Services ====================
 local Players = game:GetService("Players")
@@ -36,22 +29,20 @@ local character = player.Character or player.CharacterAdded:Wait()
 local humanoid = character:WaitForChild("Humanoid")
 
 -- ==================== 图片加载函数 ====================
-local function tryLoadImage(urls)
-    for _, url in ipairs(urls) do
-        local success, result = pcall(function()
-            return game:HttpGet(url)
-        end)
-        if success and result then
-            print("[DevTool] 图片加载成功: " .. url)
-            return url
-        end
+local function tryLoadImage(url)
+    local success, result = pcall(function()
+        return game:HttpGet(url)
+    end)
+    if success and result then
+        print("[DevTool] 图片加载成功: " .. url)
+        return url
     end
-    warn("[DevTool] 所有图片链接加载失败，使用默认显示")
+    warn("[DevTool] 图片加载失败，使用默认显示")
     return nil
 end
 
-local iconImage = tryLoadImage(ICON_URLS)
-local bgImage = tryLoadImage(BACKGROUND_URLS)
+local iconImage = tryLoadImage(ICON_URL)
+local bgImage = tryLoadImage(BACKGROUND_URL)
 
 -- ==================== LANGUAGE ====================
 local Lang = "zh"
@@ -224,56 +215,59 @@ MainGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling; MainGui.IgnoreGuiInset = t
 
 -- ==================== ACTIVATION ====================
 local ActFrame = Instance.new("Frame")
-ActFrame.Size = UDim2.new(0, 340, 0, 240); ActFrame.Position = UDim2.new(0.5, -170, 0.5, -120)
-ActFrame.BackgroundColor3 = Color3.fromRGB(10,10,10); ActFrame.BorderSizePixel = 0; ActFrame.Parent = MainGui
+ActFrame.Size = UDim2.new(0, 300, 0, 200); ActFrame.Position = UDim2.new(0.5, -150, 0.5, -100)
+ActFrame.BackgroundColor3 = Color3.fromRGB(10,10,10); ActFrame.BorderSizePixel = 0; ActFrame.ZIndex = 10; ActFrame.Parent = MainGui
 local ActCorner = Instance.new("UICorner"); ActCorner.CornerRadius = UDim.new(0,20); ActCorner.Parent = ActFrame
 addShadow(ActFrame, 8, 8, 20)
 local ActStroke = Instance.new("UIStroke"); ActStroke.Color = Color3.fromRGB(47,51,54)
 ActStroke.Thickness = 1; ActStroke.Parent = ActFrame
 
+-- XA 标题文字（始终显示）
+local XATitle = Instance.new("TextLabel"); XATitle.Text = "XA"
+XATitle.Font = Enum.Font.GothamBold; XATitle.TextSize = 36
+XATitle.TextColor3 = Color3.fromRGB(29,155,240); XATitle.BackgroundTransparency = 1
+XATitle.Size = UDim2.new(1,0,0,44); XATitle.Position = UDim2.new(0,0,0,10)
+XATitle.ZIndex = 11; XATitle.Parent = ActFrame
+
 if iconImage then
     local ActIcon = Instance.new("ImageLabel")
-    ActIcon.Size = UDim2.new(0, 60, 0, 60); ActIcon.Position = UDim2.new(0.5, -30, 0, 20)
+    ActIcon.Size = UDim2.new(0, 40, 0, 40); ActIcon.Position = UDim2.new(0.5, -20, 0, 8)
     ActIcon.BackgroundTransparency = 1; ActIcon.Image = iconImage
-    ActIcon.ScaleType = Enum.ScaleType.Fit; ActIcon.Parent = ActFrame
-else
-    local XLogo = Instance.new("TextLabel"); XLogo.Text = "XA"
-    XLogo.Font = Enum.Font.GothamBold; XLogo.TextSize = 40
-    XLogo.TextColor3 = Color3.fromRGB(29,155,240); XLogo.BackgroundTransparency = 1
-    XLogo.Size = UDim2.new(1,0,0,50); XLogo.Position = UDim2.new(0,0,0,25); XLogo.Parent = ActFrame
+    ActIcon.ScaleType = Enum.ScaleType.Fit; ActIcon.ZIndex = 12; ActIcon.Parent = ActFrame
+    XATitle.Visible = false
 end
 
 local KeyTitle = Instance.new("TextLabel")
-KeyTitle.Text = T("enterKey"); KeyTitle.Font = Enum.Font.GothamMedium; KeyTitle.TextSize = 14
+KeyTitle.Text = T("enterKey"); KeyTitle.Font = Enum.Font.GothamMedium; KeyTitle.TextSize = 13
 KeyTitle.TextColor3 = Color3.fromRGB(150,155,160); KeyTitle.BackgroundTransparency = 1
-KeyTitle.Size = UDim2.new(1,-40,0,20); KeyTitle.Position = UDim2.new(0,20,0,95)
-KeyTitle.TextXAlignment = Enum.TextXAlignment.Left; KeyTitle.Parent = ActFrame
+KeyTitle.Size = UDim2.new(1,-40,0,18); KeyTitle.Position = UDim2.new(0,20,0,55)
+KeyTitle.TextXAlignment = Enum.TextXAlignment.Left; KeyTitle.ZIndex = 11; KeyTitle.Parent = ActFrame
 
 local KeyBox = Instance.new("TextBox")
-KeyBox.Size = UDim2.new(1,-40,0,40); KeyBox.Position = UDim2.new(0,20,0,118)
+KeyBox.Size = UDim2.new(1,-40,0,36); KeyBox.Position = UDim2.new(0,20,0,74)
 KeyBox.BackgroundColor3 = Color3.fromRGB(30,30,30); KeyBox.TextColor3 = Color3.fromRGB(255,255,255)
-KeyBox.Font = Enum.Font.GothamMedium; KeyBox.TextSize = 16; KeyBox.BorderSizePixel = 0; KeyBox.Text = ""
-KeyBox.PlaceholderText = "Key..."; KeyBox.ClearTextOnFocus = false; KeyBox.Parent = ActFrame
+KeyBox.Font = Enum.Font.GothamMedium; KeyBox.TextSize = 14; KeyBox.BorderSizePixel = 0; KeyBox.Text = ""
+KeyBox.PlaceholderText = "Key..."; KeyBox.ClearTextOnFocus = false; KeyBox.ZIndex = 11; KeyBox.Parent = ActFrame
 local KeyCorner = Instance.new("UICorner"); KeyCorner.CornerRadius = UDim.new(0,12); KeyCorner.Parent = KeyBox
 
 local ActBtn = Instance.new("TextButton")
-ActBtn.Text = T("activate"); ActBtn.Font = Enum.Font.GothamBold; ActBtn.TextSize = 16
+ActBtn.Text = T("activate"); ActBtn.Font = Enum.Font.GothamBold; ActBtn.TextSize = 14
 ActBtn.TextColor3 = Color3.fromRGB(255,255,255); ActBtn.BackgroundColor3 = Color3.fromRGB(29,155,240)
-ActBtn.Size = UDim2.new(1,-40,0,44); ActBtn.Position = UDim2.new(0,20,0,170)
-ActBtn.BorderSizePixel = 0; ActBtn.AutoButtonColor = false; ActBtn.Parent = ActFrame
-local BtnCorner = Instance.new("UICorner"); BtnCorner.CornerRadius = UDim.new(0,22); BtnCorner.Parent = ActBtn
+ActBtn.Size = UDim2.new(1,-40,0,38); ActBtn.Position = UDim2.new(0,20,0,118)
+ActBtn.BorderSizePixel = 0; ActBtn.AutoButtonColor = false; ActBtn.ZIndex = 11; ActBtn.Parent = ActFrame
+local BtnCorner = Instance.new("UICorner"); BtnCorner.CornerRadius = UDim.new(0,19); BtnCorner.Parent = ActBtn
 
 local StatusLabel = Instance.new("TextLabel")
-StatusLabel.Text = ""; StatusLabel.Font = Enum.Font.GothamMedium; StatusLabel.TextSize = 12
+StatusLabel.Text = ""; StatusLabel.Font = Enum.Font.GothamMedium; StatusLabel.TextSize = 11
 StatusLabel.TextColor3 = Color3.fromRGB(255,80,80); StatusLabel.BackgroundTransparency = 1
-StatusLabel.Size = UDim2.new(1,-40,0,20); StatusLabel.Position = UDim2.new(0,20,0,218)
-StatusLabel.TextXAlignment = Enum.TextXAlignment.Center; StatusLabel.Parent = ActFrame
+StatusLabel.Size = UDim2.new(1,-40,0,18); StatusLabel.Position = UDim2.new(0,20,0,160)
+StatusLabel.TextXAlignment = Enum.TextXAlignment.Center; StatusLabel.ZIndex = 11; StatusLabel.Parent = ActFrame
 
 -- ==================== FLOATING ICON ====================
 local FloatIcon = Instance.new("ImageButton")
 FloatIcon.Size = UDim2.new(0, 52, 0, 52); FloatIcon.Position = UDim2.new(0, 20, 0, 20)
 FloatIcon.BackgroundColor3 = Color3.fromRGB(29,155,240)
-FloatIcon.BorderSizePixel = 0; FloatIcon.AutoButtonColor = false; FloatIcon.Visible = false; FloatIcon.Parent = MainGui
+FloatIcon.BorderSizePixel = 0; FloatIcon.AutoButtonColor = false; FloatIcon.Visible = false; FloatIcon.ZIndex = 10; FloatIcon.Parent = MainGui
 local IconCorner = Instance.new("UICorner"); IconCorner.CornerRadius = UDim.new(0,26); IconCorner.Parent = FloatIcon
 addShadow(FloatIcon, 4, 4, 26)
 
@@ -289,14 +283,16 @@ end
 
 -- ==================== MAIN WINDOW ====================
 local MainFrame = Instance.new("Frame")
-MainFrame.Size = UDim2.new(0, 720, 0, 420); MainFrame.Position = UDim2.new(0.5, -360, 0.5, -210)
+MainFrame.Size = UDim2.new(0, 640, 0, 320); MainFrame.Position = UDim2.new(0.5, -320, 0.5, -160)
 MainFrame.BackgroundColor3 = Color3.fromRGB(0,0,0); MainFrame.BackgroundTransparency = 0.15
-MainFrame.BorderSizePixel = 0; MainFrame.Visible = false; MainFrame.ClipsDescendants = true; MainFrame.Parent = MainGui
+MainFrame.BorderSizePixel = 0; MainFrame.Visible = false; MainFrame.ClipsDescendants = true; MainFrame.ZIndex = 5; MainFrame.Parent = MainGui
 
 if bgImage then
     local MainBg = Instance.new("ImageLabel"); MainBg.Size = UDim2.new(1,0,1,0); MainBg.Position = UDim2.new(0,0,0,0)
     MainBg.BackgroundTransparency = 1; MainBg.Image = bgImage; MainBg.ImageTransparency = 0.6
     MainBg.ScaleType = Enum.ScaleType.Crop; MainBg.ZIndex = 0; MainBg.Parent = MainFrame
+    -- 确保背景图在最底层
+    MainBg.Name = "MainBg"
 end
 
 local MainCorner = Instance.new("UICorner"); MainCorner.CornerRadius = UDim.new(0,24); MainCorner.Parent = MainFrame
@@ -306,52 +302,52 @@ MainStroke.Thickness = 1.5; MainStroke.Parent = MainFrame
 
 -- Top Bar
 local TopBar = Instance.new("Frame")
-TopBar.Size = UDim2.new(1,0,0,48); TopBar.BackgroundColor3 = Color3.fromRGB(0,0,0)
+TopBar.Size = UDim2.new(1,0,0,38); TopBar.BackgroundColor3 = Color3.fromRGB(0,0,0)
 TopBar.BackgroundTransparency = 0.3; TopBar.BorderSizePixel = 0; TopBar.ZIndex = 2; TopBar.Parent = MainFrame
 
 if iconImage then
     local TitleIcon = Instance.new("ImageLabel")
-    TitleIcon.Size = UDim2.new(0,28,0,28); TitleIcon.Position = UDim2.new(0,16,0,10)
+    TitleIcon.Size = UDim2.new(0,22,0,22); TitleIcon.Position = UDim2.new(0,12,0,8)
     TitleIcon.BackgroundTransparency = 1; TitleIcon.Image = iconImage
     TitleIcon.ScaleType = Enum.ScaleType.Fit; TitleIcon.ZIndex = 3; TitleIcon.Parent = TopBar
 end
 
 local Title = Instance.new("TextLabel")
-Title.Text = "DevTool / XA"; Title.Font = Enum.Font.GothamBold; Title.TextSize = 20
+Title.Text = "DevTool / XA"; Title.Font = Enum.Font.GothamBold; Title.TextSize = 16
 Title.TextColor3 = Color3.fromRGB(255,255,255); Title.BackgroundTransparency = 1
-Title.Size = UDim2.new(0,200,1,0); Title.Position = UDim2.new(0, iconImage and 50 or 16, 0, 0)
+Title.Size = UDim2.new(0,200,1,0); Title.Position = UDim2.new(0, iconImage and 38 or 12, 0, 0)
 Title.TextXAlignment = Enum.TextXAlignment.Left; Title.ZIndex = 3; Title.Parent = TopBar
 
 local FlyHelp = Instance.new("TextLabel"); FlyHelp.Text = ""
-FlyHelp.Font = Enum.Font.GothamMedium; FlyHelp.TextSize = 11
+FlyHelp.Font = Enum.Font.GothamMedium; FlyHelp.TextSize = 10
 FlyHelp.TextColor3 = Color3.fromRGB(150,155,160); FlyHelp.BackgroundTransparency = 1
-FlyHelp.Size = UDim2.new(0,300,1,0); FlyHelp.Position = UDim2.new(0,200,0,0)
+FlyHelp.Size = UDim2.new(0,250,1,0); FlyHelp.Position = UDim2.new(0,180,0,0)
 FlyHelp.TextXAlignment = Enum.TextXAlignment.Left; FlyHelp.ZIndex = 3; FlyHelp.Parent = TopBar
 
 local LangBtn = Instance.new("TextButton")
-LangBtn.Text = T("langSwitch"); LangBtn.Font = Enum.Font.GothamBold; LangBtn.TextSize = 12
+LangBtn.Text = T("langSwitch"); LangBtn.Font = Enum.Font.GothamBold; LangBtn.TextSize = 11
 LangBtn.TextColor3 = Color3.fromRGB(255,255,255); LangBtn.BackgroundColor3 = Color3.fromRGB(40,40,40)
-LangBtn.Size = UDim2.new(0,40,0,28); LangBtn.Position = UDim2.new(1,-140,0,10)
+LangBtn.Size = UDim2.new(0,36,0,24); LangBtn.Position = UDim2.new(1,-120,0,7)
 LangBtn.BorderSizePixel = 0; LangBtn.ZIndex = 3; LangBtn.Parent = TopBar
-local LangCorner = Instance.new("UICorner"); LangCorner.CornerRadius = UDim.new(0,14); LangCorner.Parent = LangBtn
+local LangCorner = Instance.new("UICorner"); LangCorner.CornerRadius = UDim.new(0,12); LangCorner.Parent = LangBtn
 
 local MinBtn = Instance.new("TextButton")
-MinBtn.Text = "─"; MinBtn.Font = Enum.Font.GothamBold; MinBtn.TextSize = 20
+MinBtn.Text = "─"; MinBtn.Font = Enum.Font.GothamBold; MinBtn.TextSize = 16
 MinBtn.TextColor3 = Color3.fromRGB(255,255,255); MinBtn.BackgroundColor3 = Color3.fromRGB(40,40,40)
-MinBtn.Size = UDim2.new(0,40,0,28); MinBtn.Position = UDim2.new(1,-90,0,10)
+MinBtn.Size = UDim2.new(0,36,0,24); MinBtn.Position = UDim2.new(1,-78,0,7)
 MinBtn.BorderSizePixel = 0; MinBtn.ZIndex = 3; MinBtn.Parent = TopBar
-local MinCorner = Instance.new("UICorner"); MinCorner.CornerRadius = UDim.new(0,14); MinCorner.Parent = MinBtn
+local MinCorner = Instance.new("UICorner"); MinCorner.CornerRadius = UDim.new(0,12); MinCorner.Parent = MinBtn
 
 local CloseBtn = Instance.new("TextButton")
-CloseBtn.Text = "✕"; CloseBtn.Font = Enum.Font.GothamBold; CloseBtn.TextSize = 18
+CloseBtn.Text = "✕"; CloseBtn.Font = Enum.Font.GothamBold; CloseBtn.TextSize = 14
 CloseBtn.TextColor3 = Color3.fromRGB(255,255,255); CloseBtn.BackgroundColor3 = Color3.fromRGB(40,40,40)
-CloseBtn.Size = UDim2.new(0,40,0,28); CloseBtn.Position = UDim2.new(1,-44,0,10)
+CloseBtn.Size = UDim2.new(0,36,0,24); CloseBtn.Position = UDim2.new(1,-38,0,7)
 CloseBtn.BorderSizePixel = 0; CloseBtn.ZIndex = 3; CloseBtn.Parent = TopBar
-local CloseCorner = Instance.new("UICorner"); CloseCorner.CornerRadius = UDim.new(0,14); CloseCorner.Parent = CloseBtn
+local CloseCorner = Instance.new("UICorner"); CloseCorner.CornerRadius = UDim.new(0,12); CloseCorner.Parent = CloseBtn
 
 -- Tabs
 local TabBar = Instance.new("Frame")
-TabBar.Size = UDim2.new(1,0,0,42); TabBar.Position = UDim2.new(0,0,0,48)
+TabBar.Size = UDim2.new(1,0,0,34); TabBar.Position = UDim2.new(0,0,0,38)
 TabBar.BackgroundColor3 = Color3.fromRGB(0,0,0); TabBar.BackgroundTransparency = 0.3
 TabBar.BorderSizePixel = 0; TabBar.ZIndex = 2; TabBar.Parent = MainFrame
 
@@ -364,7 +360,7 @@ local tabs = {"movement","combat","world"}
 local curTab = "movement"
 local tabBtns = {}
 for i, tab in ipairs(tabs) do
-    local b = Instance.new("TextButton"); b.Text = T(tab); b.Font = Enum.Font.GothamMedium; b.TextSize = 14
+    local b = Instance.new("TextButton"); b.Text = T(tab); b.Font = Enum.Font.GothamMedium; b.TextSize = 12
     b.TextColor3 = i==1 and Color3.fromRGB(255,255,255) or Color3.fromRGB(180,185,190)
     b.BackgroundTransparency = 1; b.Size = UDim2.new(1/3,-10,1,0)
     b.Position = UDim2.new((i-1)/3,5,0,0); b.BorderSizePixel = 0; b.ZIndex = 3; b.Parent = TabBar
@@ -375,15 +371,15 @@ end
 local pages = {}
 for _, tab in ipairs(tabs) do
     local page = Instance.new("ScrollingFrame")
-    page.Size = UDim2.new(1,0,1,-90); page.Position = UDim2.new(0,0,0,90)
+    page.Size = UDim2.new(1,0,1,-72); page.Position = UDim2.new(0,0,0,72)
     page.BackgroundColor3 = Color3.fromRGB(0,0,0); page.BackgroundTransparency = 0.4
     page.BorderSizePixel = 0; page.ScrollBarThickness = 2
     page.ScrollBarImageColor3 = Color3.fromRGB(29,155,240)
     page.CanvasSize = UDim2.new(0,0,0,0); page.Visible = false; page.ZIndex = 1; page.Parent = MainFrame
-    local list = Instance.new("UIListLayout"); list.Padding = UDim.new(0,12)
+    local list = Instance.new("UIListLayout"); list.Padding = UDim.new(0,8)
     list.HorizontalAlignment = Enum.HorizontalAlignment.Center; list.SortOrder = Enum.SortOrder.LayoutOrder; list.Parent = page
-    local pad = Instance.new("UIPadding"); pad.PaddingTop = UDim.new(0,16)
-    pad.PaddingLeft = UDim.new(0,16); pad.PaddingRight = UDim.new(0,16); pad.Parent = page
+    local pad = Instance.new("UIPadding"); pad.PaddingTop = UDim.new(0,10)
+    pad.PaddingLeft = UDim.new(0,12); pad.PaddingRight = UDim.new(0,12); pad.Parent = page
     pages[tab] = {frame = page, list = list}
 end
 
@@ -407,27 +403,27 @@ local function CreateFeature(name, type, pageName, opt)
     opt = opt or {}
     local container, list = pages[pageName].frame, pages[pageName].list
 
-    local Frame = Instance.new("Frame"); Frame.Size = UDim2.new(1,-20,0,52)
+    local Frame = Instance.new("Frame"); Frame.Size = UDim2.new(1,-20,0,42)
     Frame.BackgroundColor3 = Color3.fromRGB(22,24,28); Frame.BackgroundTransparency = 0.25
     Frame.BorderSizePixel = 0; Frame.ZIndex = 1; Frame.Parent = container
-    local FrameCorner = Instance.new("UICorner"); FrameCorner.CornerRadius = UDim.new(0,16); FrameCorner.Parent = Frame
-    addShadow(Frame, 4, 4, 16)
+    local FrameCorner = Instance.new("UICorner"); FrameCorner.CornerRadius = UDim.new(0,12); FrameCorner.Parent = Frame
+    addShadow(Frame, 3, 3, 12)
 
     local NameLabel = Instance.new("TextLabel"); NameLabel.Text = T(name)
-    NameLabel.Font = Enum.Font.GothamMedium; NameLabel.TextSize = 15
+    NameLabel.Font = Enum.Font.GothamMedium; NameLabel.TextSize = 13
     NameLabel.TextColor3 = Color3.fromRGB(240,240,240); NameLabel.BackgroundTransparency = 1
-    NameLabel.Size = UDim2.new(0,130,1,0); NameLabel.Position = UDim2.new(0,14,0,0)
+    NameLabel.Size = UDim2.new(0,120,1,0); NameLabel.Position = UDim2.new(0,12,0,0)
     NameLabel.TextXAlignment = Enum.TextXAlignment.Left; NameLabel.ZIndex = 2; NameLabel.Parent = Frame
 
     local feat = {frame = Frame, type = type, key = name}
 
     if type == "Toggle" then
         local ToggleBtn = Instance.new("TextButton"); ToggleBtn.Text = T("off")
-        ToggleBtn.Font = Enum.Font.GothamBold; ToggleBtn.TextSize = 13
+        ToggleBtn.Font = Enum.Font.GothamBold; ToggleBtn.TextSize = 11
         ToggleBtn.TextColor3 = Color3.fromRGB(255,255,255); ToggleBtn.BackgroundColor3 = Color3.fromRGB(60,60,60)
-        ToggleBtn.Size = UDim2.new(0,60,0,30); ToggleBtn.Position = UDim2.new(1,-75,0.5,-15)
+        ToggleBtn.Size = UDim2.new(0,50,0,26); ToggleBtn.Position = UDim2.new(1,-62,0.5,-13)
         ToggleBtn.BorderSizePixel = 0; ToggleBtn.AutoButtonColor = false; ToggleBtn.ZIndex = 2; ToggleBtn.Parent = Frame
-        local ToggleCorner = Instance.new("UICorner"); ToggleCorner.CornerRadius = UDim.new(0,15); ToggleCorner.Parent = ToggleBtn
+        local ToggleCorner = Instance.new("UICorner"); ToggleCorner.CornerRadius = UDim.new(0,13); ToggleCorner.Parent = ToggleBtn
         local state = false
         ToggleBtn.MouseButton1Click:Connect(function()
             state = not state; ToggleBtn.Text = state and T("on") or T("off")
@@ -446,11 +442,11 @@ local function CreateFeature(name, type, pageName, opt)
 
     elseif type == "Slider" then
         local ValLabel = Instance.new("TextLabel"); ValLabel.Text = tostring(opt.default or 16)
-        ValLabel.Font = Enum.Font.GothamMedium; ValLabel.TextSize = 14
+        ValLabel.Font = Enum.Font.GothamMedium; ValLabel.TextSize = 12
         ValLabel.TextColor3 = Color3.fromRGB(200,200,200); ValLabel.BackgroundTransparency = 1
-        ValLabel.Size = UDim2.new(0,40,1,0); ValLabel.Position = UDim2.new(1,-50,0,0); ValLabel.ZIndex = 2; ValLabel.Parent = Frame
+        ValLabel.Size = UDim2.new(0,36,1,0); ValLabel.Position = UDim2.new(1,-44,0,0); ValLabel.ZIndex = 2; ValLabel.Parent = Frame
 
-        local Track = Instance.new("Frame"); Track.Size = UDim2.new(0,120,0,6); Track.Position = UDim2.new(1,-185,0.5,-3)
+        local Track = Instance.new("Frame"); Track.Size = UDim2.new(0,100,0,5); Track.Position = UDim2.new(1,-160,0.5,-2.5)
         Track.BackgroundColor3 = Color3.fromRGB(50,50,50); Track.BorderSizePixel = 0; Track.ZIndex = 2; Track.Parent = Frame
         local TrackCorner = Instance.new("UICorner"); TrackCorner.CornerRadius = UDim.new(0,3); TrackCorner.Parent = Track
 
@@ -460,8 +456,8 @@ local function CreateFeature(name, type, pageName, opt)
         Fill.BorderSizePixel = 0; Fill.ZIndex = 2; Fill.Parent = Track
         local FillCorner = Instance.new("UICorner"); FillCorner.CornerRadius = UDim.new(0,3); FillCorner.Parent = Fill
 
-        local Knob = Instance.new("TextButton"); Knob.Size = UDim2.new(0,18,0,18)
-        Knob.Position = UDim2.new(ratio,-9,0.5,-9); Knob.BackgroundColor3 = Color3.fromRGB(255,255,255)
+        local Knob = Instance.new("TextButton"); Knob.Size = UDim2.new(0,14,0,14)
+        Knob.Position = UDim2.new(ratio,-7,0.5,-7); Knob.BackgroundColor3 = Color3.fromRGB(255,255,255)
         Knob.Text = ""; Knob.BorderSizePixel = 0; Knob.AutoButtonColor = false; Knob.ZIndex = 3; Knob.Parent = Track
         local KnobCorner = Instance.new("UICorner"); KnobCorner.CornerRadius = UDim.new(0,9); KnobCorner.Parent = Knob
 
@@ -469,7 +465,7 @@ local function CreateFeature(name, type, pageName, opt)
         local function update(pos)
             local rel = math.clamp((pos.X-Track.AbsolutePosition.X)/Track.AbsoluteSize.X,0,1)
             val = math.floor(min+rel*(max-min)+0.5); ValLabel.Text = tostring(val)
-            Fill.Size = UDim2.new(rel,0,1,0); Knob.Position = UDim2.new(rel,-9,0.5,-9)
+            Fill.Size = UDim2.new(rel,0,1,0); Knob.Position = UDim2.new(rel,-7,0.5,-7)
             if opt.onChange then opt.onChange(val) end
         end
         Knob.MouseButton1Down:Connect(function() dragging = true end)
@@ -490,16 +486,16 @@ local function CreateFeature(name, type, pageName, opt)
             local r = (val-min)/(max-min)
             ValLabel.Text = tostring(val)
             Fill.Size = UDim2.new(r,0,1,0)
-            Knob.Position = UDim2.new(r,-9,0.5,-9)
+            Knob.Position = UDim2.new(r,-7,0.5,-7)
             if opt.onChange then opt.onChange(val) end
         end
 
     elseif type == "Button" then
         local Btn = Instance.new("TextButton"); Btn.Text = opt.text or T("execute")
-        Btn.Font = Enum.Font.GothamBold; Btn.TextSize = 14; Btn.TextColor3 = Color3.fromRGB(255,255,255)
-        Btn.BackgroundColor3 = Color3.fromRGB(29,155,240); Btn.Size = UDim2.new(0,80,0,32)
-        Btn.Position = UDim2.new(1,-95,0.5,-16); Btn.BorderSizePixel = 0; Btn.AutoButtonColor = false; Btn.ZIndex = 2; Btn.Parent = Frame
-        local BtnCorner = Instance.new("UICorner"); BtnCorner.CornerRadius = UDim.new(0,16); BtnCorner.Parent = Btn
+        Btn.Font = Enum.Font.GothamBold; Btn.TextSize = 12; Btn.TextColor3 = Color3.fromRGB(255,255,255)
+        Btn.BackgroundColor3 = Color3.fromRGB(29,155,240); Btn.Size = UDim2.new(0,70,0,28)
+        Btn.Position = UDim2.new(1,-82,0.5,-14); Btn.BorderSizePixel = 0; Btn.AutoButtonColor = false; Btn.ZIndex = 2; Btn.Parent = Frame
+        local BtnCorner = Instance.new("UICorner"); BtnCorner.CornerRadius = UDim.new(0,14); BtnCorner.Parent = Btn
         Btn.MouseButton1Click:Connect(function()
             tween(Btn, {BackgroundColor3 = Color3.fromRGB(18,120,200)}, 0.1)
             task.wait(0.1); tween(Btn, {BackgroundColor3 = Color3.fromRGB(29,155,240)}, 0.1)
@@ -617,13 +613,32 @@ local invisibleSavedTransparency = {}
 -- ==================== FEATURES ====================
 
 -- === Speed ===
+-- 使用 RenderStepped 移动加速，不修改 WalkSpeed（避免服务端反作弊检测掉血）
 createFeatureState("speed")
+local targetSpeed = 16
+local speedConn = nil
 speedFeature = CreateFeature("speed", "Slider", "movement", {default=16, min=16, max=200, onChange=function(v)
-    local hum = getHumanoid()
-    if hum then
-        hum.WalkSpeed = v
-    end
+    targetSpeed = v
 end})
+
+local function applySpeedBoost()
+    if speedConn then pcall(function() speedConn:Disconnect() end) end
+    speedConn = RunService.RenderStepped:Connect(function(dt)
+        if targetSpeed <= 16 then return end
+        local hum = getHumanoid()
+        local hrp = getHRP()
+        if not hum or not hrp then return end
+        -- 保持 WalkSpeed 为 16，不触发反作弊
+        if hum.WalkSpeed ~= 16 then hum.WalkSpeed = 16 end
+        local moveDir = hum.MoveDirection
+        if moveDir.Magnitude > 0 then
+            local boost = (targetSpeed - 16) * dt
+            hrp.CFrame = hrp.CFrame + moveDir * boost
+        end
+    end)
+    addConnection("speed", speedConn)
+end
+applySpeedBoost()
 
 -- === Jump ===
 createFeatureState("jump")
@@ -1050,14 +1065,14 @@ local function minimize()
     disableBlur()
     local targetPos = FloatIcon.AbsolutePosition
     tween(MainFrame, {Size=UDim2.new(0,0,0,0), Position=UDim2.new(0,targetPos.X,0,targetPos.Y)}, 0.3, Enum.EasingStyle.Back)
-    task.delay(0.3, function() MainFrame.Visible=false; MainFrame.Size=UDim2.new(0,720,0,420); MainFrame.Position=UDim2.new(0.5,-360,0.5,-210) end)
+    task.delay(0.3, function() MainFrame.Visible=false; MainFrame.Size=UDim2.new(0,640,0,320); MainFrame.Position=UDim2.new(0.5,-320,0.5,-160) end)
     FloatIcon.Visible=true; FloatIcon.Size=UDim2.new(0,0,0,0)
     tween(FloatIcon, {Size=UDim2.new(0,52,0,52)}, 0.3, Enum.EasingStyle.Back)
 end
 local function restore()
     FloatIcon.Visible=false; enableBlur(); MainFrame.Visible=true
     MainFrame.Size=UDim2.new(0,0,0,0); MainFrame.Position=UDim2.new(0.5,0,0.5,0)
-    tween(MainFrame, {Size=UDim2.new(0,720,0,420), Position=UDim2.new(0.5,-360,0.5,-210)}, 0.35, Enum.EasingStyle.Back)
+    tween(MainFrame, {Size=UDim2.new(0,640,0,320), Position=UDim2.new(0.5,-320,0.5,-160)}, 0.35, Enum.EasingStyle.Back)
 end
 MinBtn.MouseButton1Click:Connect(minimize); CloseBtn.MouseButton1Click:Connect(minimize)
 FloatIcon.MouseButton1Click:Connect(function() if active then restore() end end)
@@ -1089,8 +1104,8 @@ ActBtn.MouseButton1Click:Connect(function()
         tween(ActFrame, {BackgroundTransparency=1}, 0.3)
         task.delay(0.3, function() ActFrame.Visible=false; FloatIcon.Visible=true; FloatIcon.Size=UDim2.new(0,0,0,0); tween(FloatIcon, {Size=UDim2.new(0,52,0,52)}, 0.4, Enum.EasingStyle.Back) end)
     else StatusLabel.Text=T("invalidKey"); local ox=ActFrame.Position.X.Offset
-        for _=1,3 do tween(ActFrame, {Position=UDim2.new(0.5,ox-6,0.5,-120)}, 0.05); task.wait(0.05); tween(ActFrame, {Position=UDim2.new(0.5,ox+6,0.5,-120)}, 0.05); task.wait(0.05) end
-        tween(ActFrame, {Position=UDim2.new(0.5,ox,0.5,-120)}, 0.1); task.delay(2,function() StatusLabel.Text="" end)
+        for _=1,3 do tween(ActFrame, {Position=UDim2.new(0.5,ox-6,0.5,-100)}, 0.05); task.wait(0.05); tween(ActFrame, {Position=UDim2.new(0.5,ox+6,0.5,-100)}, 0.05); task.wait(0.05) end
+        tween(ActFrame, {Position=UDim2.new(0.5,ox,0.5,-100)}, 0.1); task.delay(2,function() StatusLabel.Text="" end)
     end
 end)
 
@@ -1110,14 +1125,8 @@ player.CharacterAdded:Connect(function(ch)
     -- 重新应用激活的功能
     task.wait(1) -- 等待角色完全加载
 
-    -- 速度
-    if speedFeature and speedFeature.getValue then
-        local spd = speedFeature.getValue()
-        if spd and spd > 16 then
-            local hum = getHumanoid()
-            if hum then hum.WalkSpeed = spd end
-        end
-    end
+    -- 速度（已由 RenderStepped 自动处理，无需额外操作）
+    -- targetSpeed 变量保持不变，applySpeedBoost 会持续生效
 
     -- 跳跃
     if jumpFeature and jumpFeature.getValue then
@@ -1155,4 +1164,4 @@ end)
 
 -- ==================== Init ====================
 switchTab("movement")
-print("[DevTool] XA Dev Backdoor v5.0 | Improved & Optimized | Key: xa3765360431")
+print("[DevTool] XA Dev Backdoor v5.1 | Improved & Optimized | Key: xa3765360431")
