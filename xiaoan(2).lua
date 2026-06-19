@@ -1,5 +1,5 @@
 --[[
-    X-Style Dev Backdoor v7.0 (Advanced Aimbot + Anti-Cheat + Full Optimization)
+    X-Style Dev Backdoor v7.1 (Anti-267 Fix + Advanced Aimbot + Anti-Cheat)
     Key: xa3765360431
     - 27-layer anti-cheat bypass system (always on)
     - Advanced aimbot with prediction, FOV, priority, keybind, sticky aim, etc.
@@ -145,412 +145,211 @@ local KEY = "xa3765360431"
 local active = false
 
 -- ####################################################################
--- ==================== ANTI-CHEAT BYPASS SYSTEM ==================== --
--- 默认开启，无法关闭，覆盖所有热门游戏和通用反作弊
+-- ==================== ANTI-CHEAT BYPASS SYSTEM v2 ==================== --
+-- 合并所有钩子为2个hookmetamethod调用，避免多次元表修改被检测
+-- 默认开启，无法关闭
 -- ####################################################################
 
--- === 工具函数 ===
-local function safeHook(metatable, methodName, hookFn)
-    local mt = getrawmetatable(metatable)
-    if not mt then return end
-    setreadonly(mt, false)
-    local old = mt[methodName]
-    if old then
-        mt[methodName] = hookFn(old)
-    end
-    setreadonly(mt, true)
-end
-
-local function safeHookFunction(original, hookFn)
-    if hookfunction then
-        pcall(function() hookfunction(original, hookFn(original)) end)
-    end
-end
-
--- === 1. 通用元表钩子：__namecall 拦截反作弊远程事件 ===
--- 拦截 FireServer / InvokeServer，过滤已知的反作弊远程名称
-local ANTI_CHEAT_REMOTE_NAMES = {
-    -- 通用反作弊关键词
-    "AntiCheat", "anticheat", "ANTI_CHEAT", "AntiExploit", "antiexploit",
-    "ExploitDetected", "exploitdetected", "ExploitDetect", "KickRemote",
-    "kickremote", "KickPlayer", "kickplayer", "AutoKick", "autokick",
-    "SecurityCheck", "securitycheck", "IntegrityCheck", "integritycheck",
-    "ValidationCheck", "validationcheck", "ValidatePlayer", "validateplayer",
-    "PlayerValidation", "playervalidation", "SanityCheck", "sanitycheck",
-    "HeartbeatCheck", "heartbeatcheck", "PositionCheck", "positioncheck",
-    "MovementCheck", "movementcheck", "SpeedCheck", "speedcheck",
-    "JumpCheck", "jumpcheck", "FlyCheck", "flycheck",
-    "TeleportCheck", "teleportcheck", "NoClipCheck", "noclipcheck",
-    "GodCheck", "godcheck", "HackDetected", "hackdetected",
-    "CheatDetected", "cheatdetected", "SuspiciousActivity", "suspiciousactivity",
-    "ReportPlayer", "reportplayer", "LogPlayer", "logplayer",
-    "BanPlayer", "banplayer", "DetectCheat", "detectcheat",
-    "WalkSpeedCheck", "walkspeedcheck", "JumpPowerCheck", "jumppowercheck",
-    "HealthCheck", "healthcheck", "CharacterCheck", "charactercheck",
-    -- Blox Fruits
-    "MainRemotes", "CombatRemotes", "RemoteEvent", "AntiHack",
-    "KickHack", "ReportHack", "BloxHack", "FruitHack",
-    -- Da Hood
-    "DaHoodAnti", "HoodAnti", "HoodKick", "DaHoodKick",
-    -- Arsenal
-    "ArsenalAnti", "ArsenalKick", "ARS_AntiCheat",
-    -- Brookhaven
-    "BrookAnti", "BrookKick", "BH_AntiCheat",
-    -- Murder Mystery 2
-    "MM2Anti", "MM2Kick", "MurderAnti",
-    -- King Legacy
-    "KingAnti", "KingKick", "KLAntiCheat",
-    -- Pet Simulator
-    "PetAnti", "PetKick", "PetSimAnti",
-    -- Tower of Hell
-    "TOHAnti", "TowerAnti", "TOHKick",
-    -- Adopt Me
-    "AdoptAnti", "AdoptKick",
-    -- Universal patterns
-    "AC_", "ac_", "AE_", "ae_", "SEC_", "sec_",
-    "BAN_", "ban_", "KICK_", "kick_", "LOG_", "log_",
-    "CHECK_", "check_", "VALID_", "valid_",
+-- === 反作弊远程名称库 ===
+local AC_KEYWORDS = {
+    "AntiCheat","anticheat","AntiExploit","antiexploit","ExploitDetected",
+    "ExploitDetect","KickRemote","KickPlayer","AutoKick","SecurityCheck",
+    "IntegrityCheck","ValidationCheck","ValidatePlayer","PlayerValidation",
+    "SanityCheck","HeartbeatCheck","PositionCheck","MovementCheck",
+    "SpeedCheck","JumpCheck","FlyCheck","TeleportCheck","NoClipCheck",
+    "GodCheck","HackDetected","CheatDetected","SuspiciousActivity",
+    "ReportPlayer","LogPlayer","BanPlayer","DetectCheat","WalkSpeedCheck",
+    "JumpPowerCheck","HealthCheck","CharacterCheck",
+    "MainRemotes","CombatRemotes","AntiHack","KickHack","ReportHack",
+    "BloxHack","FruitHack","DaHoodAnti","HoodAnti","HoodKick","DaHoodKick",
+    "ArsenalAnti","ArsenalKick","ARS_AntiCheat","BrookAnti","BrookKick",
+    "BH_AntiCheat","MM2Anti","MM2Kick","MurderAnti","KingAnti","KingKick",
+    "KLAntiCheat","PetAnti","PetKick","PetSimAnti","TOHAnti","TowerAnti",
+    "TOHKick","AdoptAnti","AdoptKick","AM_AntiCheat",
 }
 
-local ANTI_CHEAT_REMOTE_PARTIAL = {
-    "anti", "Anti", "ANTI", "kick", "Kick", "KICK",
-    "exploit", "Exploit", "EXPLOIT", "hack", "Hack", "HACK",
-    "cheat", "Cheat", "CHEAT", "detect", "Detect", "DETECT",
-    "ban", "Ban", "BAN", "security", "Security", "SECURITY",
-    "valid", "Valid", "VALID", "integrity", "Integrity",
-    "sanity", "Sanity", "report", "Report", "REPORT",
-    "logplayer", "LogPlayer", "suspicious", "Suspicious",
+local AC_PARTIAL = {
+    "anti","Anti","kick","Kick","exploit","Exploit","hack","Hack",
+    "cheat","Cheat","detect","Detect","ban","Ban","security","Security",
+    "valid","Valid","integrity","Integrity","sanity","Sanity",
+    "report","Report","suspicious","Suspicious","monitor","Monitor",
 }
 
-local function isAntiCheatRemote(remoteName)
-    if not remoteName then return false end
-    local name = tostring(remoteName)
-    -- 精确匹配
-    for _, keyword in ipairs(ANTI_CHEAT_REMOTE_NAMES) do
-        if name == keyword then return true end
+local AC_SAFE_NAMES = {
+    "Inventory","Shop","Purchase","Equip","Unequip","Chat","Message",
+    "Trade","Quest","Mission","TeleportService","FriendService","Badge",
+    "LoadData","SaveData","GetData","SetData","UpdateData",
+}
+
+local function isACRemote(name)
+    if not name then return false end
+    local n = tostring(name)
+    for _, kw in ipairs(AC_KEYWORDS) do
+        if n == kw then return true end
     end
-    -- 部分匹配（名称中包含反作弊关键词）
-    for _, keyword in ipairs(ANTI_CHEAT_REMOTE_PARTIAL) do
-        if name:find(keyword) then
-            -- 排除误判：常见正常远程名称
-            local safeNames = {
-                "Inventory", "Shop", "Purchase", "Equip", "Unequip",
-                "Chat", "Message", "Trade", "Quest", "Mission",
-                "TeleportService", "FriendService", "Badge",
-            }
-            local isSafe = false
-            for _, safe in ipairs(safeNames) do
-                if name:find(safe) then isSafe = true; break end
+    for _, kw in ipairs(AC_PARTIAL) do
+        if n:find(kw) then
+            for _, safe in ipairs(AC_SAFE_NAMES) do
+                if n:find(safe) then return false end
             end
-            if not isSafe then return true end
+            return true
         end
     end
     return false
 end
 
--- Hook __namecall 拦截 FireServer/InvokeServer
-local oldNamecall
-oldNamecall = hookmetamethod(game, "__namecall", newcclosure(function(self, ...)
+-- 隐藏的实例名称
+local HIDDEN_INSTANCES = {
+    ESPHighlight=true, ESPLabel=true, MainBg=true,
+    XAHitbox=true, XATracer=true, XAHealthBar=true,
+    XA_DevTool=true, EspOverlay=true,
+}
+
+-- 正常值常量
+local NORMAL_WS = 16
+local NORMAL_JP = 50
+
+-- === 统一 __namecall 钩子（单一调用，合并所有功能）===
+local oldNC
+oldNC = hookmetamethod(game, "__namecall", newcclosure(function(self, ...)
     local method = getnamecallmethod()
+
+    -- 1. Kick 拦截
+    if method == "Kick" and self == player then
+        return nil
+    end
+
+    -- 2. FireServer / InvokeServer 反作弊远程拦截
     if method == "FireServer" or method == "InvokeServer" then
-        local remoteName = self.Name
-        if isAntiCheatRemote(remoteName) then
-            return nil -- 静默丢弃反作弊远程调用
-        end
-        -- 额外检查：参数中包含反作弊标记
+        if isACRemote(self.Name) then return nil end
         local args = {...}
-        for _, arg in ipairs(args) do
-            if type(arg) == "string" then
-                local lowerArg = arg:lower()
-                if lowerArg:find("exploit") or lowerArg:find("hack") or
-                   lowerArg:find("cheat") or lowerArg:find("kick") or
-                   lowerArg:find("ban") or lowerArg:find("suspicious") then
+        for i = 1, #args do
+            if type(args[i]) == "string" then
+                local la = args[i]:lower()
+                if la:find("exploit") or la:find("hack") or la:find("cheat")
+                    or la:find("kick") or la:find("ban") or la:find("suspicious") then
                     return nil
                 end
             end
         end
     end
-    return oldNamecall(self, ...)
-end))
 
--- === 2. 属性欺骗：WalkSpeed / JumpPower / Health 返回正常值 ===
--- 当游戏读取 Humanoid.WalkSpeed/JumpPower 时返回默认值，实际值不受影响
-local NORMAL_WALKSPEED = 16
-local NORMAL_JUMPPOWER = 50
-local NORMAL_MAXHEALTH = 100
-
-local oldIndex
-oldIndex = hookmetamethod(game, "__index", newcclosure(function(self, key)
-    if self:IsA("Humanoid") then
-        if key == "WalkSpeed" then return NORMAL_WALKSPEED end
-        if key == "JumpPower" then return NORMAL_JUMPPOWER end
-        if key == "Health" then return self.MaxHealth end
-        if key == "JumpHeight" then return 7.2 end
-    end
-    if self == Workspace and key == "Gravity" then return 196.2 end
-    return oldIndex(self, key)
-end))
-
--- === 3. GetPropertyChangedSignal 拦截 ===
--- 阻止游戏监听 WalkSpeed/JumpPower/Health 等属性变化
-local oldNamecall2
-oldNamecall2 = hookmetamethod(game, "__namecall", newcclosure(function(self, ...)
-    local method = getnamecallmethod()
+    -- 3. GetPropertyChangedSignal 拦截
     if method == "GetPropertyChangedSignal" then
         local args = {...}
-        local propName = args[1]
-        if propName == "WalkSpeed" or propName == "JumpPower" or
-           propName == "JumpHeight" or propName == "Health" or
-           propName == "MaxHealth" or propName == "PlatformStand" or
-           propName == "Sit" or propName == "State" then
-            -- 返回一个永远不会触发的信号
+        local prop = args[1]
+        if prop == "WalkSpeed" or prop == "JumpPower" or prop == "JumpHeight"
+            or prop == "Health" or prop == "MaxHealth" or prop == "PlatformStand"
+            or prop == "Sit" or prop == "State" or prop == "CFrame"
+            or prop == "Size" or prop == "Transparency" or prop == "CanCollide" then
             return Instance.new("BindableEvent").Event
         end
     end
-    return oldNamecall2(self, ...)
-end))
 
--- === 4. Humanoid 状态欺骗 ===
--- 当游戏检查 Humanoid:GetState() 时返回正常状态
-local oldGetState = nil
-pcall(function()
-    local humanoidMeta = getrawmetatable(humanoid)
-    if humanoidMeta then
-        setreadonly(humanoidMeta, false)
-        oldGetState = humanoidMeta.__index
-        setreadonly(humanoidMeta, true)
-    end
-end)
-
--- === 5. FindFirstChild / WaitForChild 拦截 ===
--- 防止游戏检测注入的实例（如 ESP、Highlight 等）
-local oldFindFirstChild
-oldFindFirstChild = hookmetamethod(game, "__namecall", newcclosure(function(self, ...)
-    local method = getnamecallmethod()
-    if method == "FindFirstChild" or method == "FindFirstChildWhichIsA" or
-       method == "FindFirstChildOfClass" or method == "WaitForChild" then
+    -- 4. FindFirstChild / WaitForChild 隐藏实例
+    if method == "FindFirstChild" or method == "FindFirstChildWhichIsA"
+        or method == "FindFirstChildOfClass" or method == "WaitForChild" then
         local args = {...}
         local name = args[1]
-        -- 隐藏我们创建的实例
-        if type(name) == "string" then
-            if name == "ESPHighlight" or name == "ESPLabel" or name == "MainBg" or
-               name == "XAHitbox" or name == "XATracer" or name == "XAHealthBar" then
-                return nil
+        if type(name) == "string" and HIDDEN_INSTANCES[name] then
+            return nil
+        end
+    end
+
+    -- 5. GetState 欺骗
+    if method == "GetState" then
+        if self:IsA("Humanoid") then
+            return Enum.HumanoidStateType.Running
+        end
+    end
+
+    -- 6. GetChildren / GetDescendants CoreGui 过滤
+    if (method == "GetChildren" or method == "GetDescendants") and self == CoreGui then
+        local results = oldNC(self, ...)
+        if type(results) == "table" then
+            local filtered = {}
+            for _, item in ipairs(results) do
+                if not HIDDEN_INSTANCES[item.Name] then
+                    filtered[#filtered + 1] = item
+                end
+            end
+            return filtered
+        end
+    end
+
+    -- 7. DataStore 反作弊数据拦截
+    if method == "GetAsync" or method == "GetSortedAsync" or
+       method == "SetAsync" or method == "IncrementAsync" or method == "UpdateAsync" then
+        local args = {...}
+        for i = 1, #args do
+            if type(args[i]) == "string" then
+                local la = args[i]:lower()
+                if la:find("ban") or la:find("kick") or la:find("flag")
+                    or la:find("report") or la:find("exploit") or la:find("hack") then
+                    return nil
+                end
             end
         end
     end
-    return oldFindFirstChild(self, ...)
+
+    return oldNC(self, ...)
 end))
 
--- === 6. Raycast 拦截（ESP/透视检测绕过）===
--- 某些游戏用射线检测玩家是否能看到不应该看到的东西
-local oldRaycast = Workspace.Raycast
-local function bypassRaycast(self, origin, direction, params)
-    -- 不修改正常射线，只确保我们的 ESP 不会被检测
-    return oldRaycast(self, origin, direction, params)
-end
+-- === 统一 __index 钩子（单一调用，合并所有属性欺骗）===
+local oldIdx
+oldIdx = hookmetamethod(game, "__index", newcclosure(function(self, key)
+    -- Humanoid 属性欺骗
+    if self:IsA("Humanoid") then
+        if key == "WalkSpeed" then return NORMAL_WS end
+        if key == "JumpPower" then return NORMAL_JP end
+        if key == "JumpHeight" then return 7.2 end
+        if key == "Health" then return self.MaxHealth end
+    end
+    -- Gravity 欺骗
+    if self == Workspace and key == "Gravity" then return 196.2 end
+    -- BodyVelocity/BodyGyro/BodyPosition 欺骗
+    if self:IsA("BodyVelocity") and key == "Velocity" then return Vector3.new(0,0,0) end
+    if self:IsA("BodyGyro") and key == "CFrame" then return CFrame.new() end
+    if self:IsA("BodyPosition") and key == "Position" then return Vector3.new(0,0,0) end
+    -- 角色部件透明度/CanCollide 欺骗
+    if self:IsA("BasePart") and (key == "Transparency" or key == "CanCollide") then
+        local char = player.Character
+        if char and char.Parent and self:IsDescendantOf(char) then
+            if key == "Transparency" then return 0 end
+            if key == "CanCollide" then return true end
+        end
+    end
+    return oldIdx(self, key)
+end))
 
--- === 7. 游戏特定绕过 ===
-
--- === 7a. Blox Fruits 绕过 ===
+-- === 游戏特定反作弊脚本禁用 ===
 task.spawn(function()
     pcall(function()
-        -- Blox Fruits 使用多种远程事件检测作弊
-        local bfRemotes = {
-            "MainRemotes", "CombatRemotes", "AntiHack",
-            "ReportExploiter", "KickExploiter", "DetectHack",
-            "WalkSpeedDetector", "JumpPowerDetector", "FlyDetector",
-            "TeleportDetector", "NoClipDetector", "GodModeDetector",
-        }
-        for _, remoteName in ipairs(bfRemotes) do
-            for _, svc in ipairs({"ReplicatedStorage", "Workspace"}) do
-                local remote = game:GetService(svc):FindFirstChild(remoteName, true)
-                if remote and remote:IsA("RemoteEvent") then
-                    -- 禁用反作弊远程
-                    pcall(function() remote:Destroy() end)
-                end
-            end
-        end
-        -- 持续监控并删除新创建的反作弊远程
-        local bfConn = nil
-        bfConn = game:GetService("ReplicatedStorage").ChildAdded:Connect(function(child)
-            for _, keyword in ipairs(bfRemotes) do
-                if child.Name == keyword then
-                    pcall(function() child:Destroy() end)
-                end
-            end
-        end)
-    end)
-end)
-
--- === 7b. Da Hood 绕过 ===
-task.spawn(function()
-    pcall(function()
-        local dhRemotes = {
-            "DaHoodAnti", "HoodAnti", "HoodKick", "DaHoodKick",
-            "AntiSpeed", "AntiFly", "AntiTeleport", "AntiGod",
-            "WalkSpeedCheck", "StompCheck", "CarryCheck",
-            "CashCheck", "GunCheck", "AttackCheck",
-        }
-        for _, remoteName in ipairs(dhRemotes) do
-            for _, svc in ipairs({"ReplicatedStorage", "Workspace", "StarterGui"}) do
-                local remote = game:GetService(svc):FindFirstChild(remoteName, true)
-                if remote then pcall(function() remote:Destroy() end) end
-            end
-        end
-        -- Da Hood 经常在 StarterPlayerScripts 中放反作弊
-        local sps = game:GetService("StarterPlayer"):FindFirstChild("StarterPlayerScripts")
-        if sps then
-            for _, child in ipairs(sps:GetDescendants()) do
-                if child:IsA("LocalScript") then
-                    local name = child.Name:lower()
-                    if name:find("anti") or name:find("kick") or name:find("detect") or
-                       name:find("exploit") or name:find("hack") or name:find("cheat") then
-                        pcall(function() child.Disabled = true end)
-                    end
-                end
-            end
-        end
-    end)
-end)
-
--- === 7c. Arsenal 绕过 ===
-task.spawn(function()
-    pcall(function()
-        local arRemotes = {
-            "ArsenalAnti", "ARS_AntiCheat", "ARS_Kick",
-            "SpeedCheck", "AimbotCheck", "ESPCheck",
-            "WeaponCheck", "HitCheck", "KillCheck",
-        }
-        for _, remoteName in ipairs(arRemotes) do
-            local remote = game:GetService("ReplicatedStorage"):FindFirstChild(remoteName, true)
-            if remote then pcall(function() remote:Destroy() end) end
-        end
-    end)
-end)
-
--- === 7d. Brookhaven 绕过 ===
-task.spawn(function()
-    pcall(function()
-        local bhRemotes = {
-            "BrookAnti", "BH_AntiCheat", "BH_Kick",
-            "VehicleCheck", "RoleCheck", "SpeedCheck",
-            "FlyCheck", "NoclipCheck", "TeleportCheck",
-        }
-        for _, remoteName in ipairs(bhRemotes) do
-            local remote = game:GetService("ReplicatedStorage"):FindFirstChild(remoteName, true)
-            if remote then pcall(function() remote:Destroy() end) end
-        end
-    end)
-end)
-
--- === 7e. Murder Mystery 2 绕过 ===
-task.spawn(function()
-    pcall(function()
-        local mm2Remotes = {
-            "MM2Anti", "MM2Kick", "MurderAnti",
-            "RoleCheck", "KillCheck", "SpeedCheck",
-            "KnifeCheck", "GunCheck", "SheriffCheck",
-        }
-        for _, remoteName in ipairs(mm2Remotes) do
-            local remote = game:GetService("ReplicatedStorage"):FindFirstChild(remoteName, true)
-            if remote then pcall(function() remote:Destroy() end) end
-        end
-    end)
-end)
-
--- === 7f. King Legacy 绕过 ===
-task.spawn(function()
-    pcall(function()
-        local klRemotes = {
-            "KingAnti", "KLAntiCheat", "KingKick",
-            "FruitCheck", "HakiCheck", "SpeedCheck",
-            "FlyCheck", "TeleportCheck", "DamageCheck",
-        }
-        for _, remoteName in ipairs(klRemotes) do
-            local remote = game:GetService("ReplicatedStorage"):FindFirstChild(remoteName, true)
-            if remote then pcall(function() remote:Destroy() end) end
-        end
-    end)
-end)
-
--- === 7g. Pet Simulator X 绕过 ===
-task.spawn(function()
-    pcall(function()
-        local psRemotes = {
-            "PetAnti", "PetSimAnti", "PetKick",
-            "EggCheck", "PetCheck", "CoinCheck",
-            "SpeedCheck", "FlyCheck", "TeleportCheck",
-        }
-        for _, remoteName in ipairs(psRemotes) do
-            local remote = game:GetService("ReplicatedStorage"):FindFirstChild(remoteName, true)
-            if remote then pcall(function() remote:Destroy() end) end
-        end
-    end)
-end)
-
--- === 7h. Tower of Hell 绕过 ===
-task.spawn(function()
-    pcall(function()
-        local tohRemotes = {
-            "TOHAnti", "TowerAnti", "TOHKick",
-            "SpeedCheck", "FlyCheck", "TeleportCheck",
-            "NoclipCheck", "WinCheck", "HeightCheck",
-        }
-        for _, remoteName in ipairs(tohRemotes) do
-            local remote = game:GetService("ReplicatedStorage"):FindFirstChild(remoteName, true)
-            if remote then pcall(function() remote:Destroy() end) end
-        end
-        -- Tower of Hell 经常检测玩家的 Y 坐标
-        -- 禁用其反作弊 LocalScript
-        for _, child in ipairs(game:GetDescendants()) do
-            if child:IsA("LocalScript") then
-                local name = child.Name:lower()
-                if name:find("anti") or name:find("kick") or name:find("detect") then
-                    pcall(function() child.Disabled = true end)
-                end
-            end
-        end
-    end)
-end)
-
--- === 7i. Adopt Me 绕过 ===
-task.spawn(function()
-    pcall(function()
-        local amRemotes = {
-            "AdoptAnti", "AdoptKick", "AM_AntiCheat",
-            "PetCheck", "SpeedCheck", "FlyCheck",
-            "TradeCheck", "MoneyCheck", "BucksCheck",
-        }
-        for _, remoteName in ipairs(amRemotes) do
-            local remote = game:GetService("ReplicatedStorage"):FindFirstChild(remoteName, true)
-            if remote then pcall(function() remote:Destroy() end) end
-        end
-    end)
-end)
-
--- === 8. 通用 LocalScript 反作弊禁用 ===
-task.spawn(function()
-    pcall(function()
+        -- 禁用所有反作弊 LocalScript
         for _, child in ipairs(game:GetDescendants()) do
             if child:IsA("LocalScript") then
                 local name = child.Name:lower()
                 if name:find("anti") or name:find("kick") or name:find("detect") or
                    name:find("exploit") or name:find("hack") or name:find("cheat") or
                    name:find("security") or name:find("integrity") or name:find("validation") or
-                   name:find("sanity") or name:find("monitor") then
+                   name:find("sanity") or name:find("monitor") or name:find("protect") then
                     pcall(function() child.Disabled = true end)
+                end
+            end
+            -- 销毁反作弊 RemoteEvent
+            if child:IsA("RemoteEvent") or child:IsA("RemoteFunction") then
+                if isACRemote(child.Name) then
+                    pcall(function() child:Destroy() end)
                 end
             end
         end
     end)
 end)
 
--- === 9. 持续监控：删除新创建的反作弊实例 ===
+-- === 持续监控：新创建的反作弊实例 ===
 task.spawn(function()
     pcall(function()
         game.DescendantAdded:Connect(function(desc)
-            -- 监控新创建的 LocalScript
             if desc:IsA("LocalScript") then
                 local name = desc.Name:lower()
                 if name:find("anti") or name:find("kick") or name:find("detect") or
@@ -559,284 +358,14 @@ task.spawn(function()
                     pcall(function() desc.Disabled = true end)
                 end
             end
-            -- 监控新创建的 RemoteEvent
-            if desc:IsA("RemoteEvent") or desc:IsA("RemoteFunction") then
-                if isAntiCheatRemote(desc.Name) then
-                    pcall(function() desc:Destroy() end)
-                end
+            if (desc:IsA("RemoteEvent") or desc:IsA("RemoteFunction")) and isACRemote(desc.Name) then
+                pcall(function() desc:Destroy() end)
             end
         end)
     end)
 end)
 
--- === 10. Kick 拦截 ===
--- 防止服务器通过 LocalScript 踢出玩家
-local oldKick = nil
-pcall(function()
-    local plrMeta = getrawmetatable(player)
-    if plrMeta then
-        setreadonly(plrMeta, false)
-        oldKick = plrMeta.__index
-        -- Hook :Kick() 方法
-        local mt = getrawmetatable(game)
-        setreadonly(mt, false)
-        local oldNC = mt.__namecall
-        mt.__namecall = newcclosure(function(self, ...)
-            local method = getnamecallmethod()
-            if method == "Kick" and self == player then
-                return -- 阻止踢出
-            end
-            return oldNC(self, ...)
-        end)
-        setreadonly(mt, true)
-    end
-end)
-
--- === 11. 网络所有权绕过 ===
--- 某些游戏检测玩家是否获取了不应拥有的网络所有权
-pcall(function()
-    local oldSetNetworkOwner
-    local mt = getrawmetatable(game)
-    setreadonly(mt, false)
-    local oldNC3 = mt.__namecall
-    mt.__namecall = newcclosure(function(self, ...)
-        local method = getnamecallmethod()
-        if method == "SetNetworkOwner" then
-            -- 允许但不让游戏检测到
-            return oldNC3(self, ...)
-        end
-        if method == "CanSetNetworkOwnership" then
-            return false -- 假装不能设置
-        end
-        return oldNC3(self, ...)
-    end)
-    setreadonly(mt, true)
-end)
-
--- === 12. Camera CFrame 检测绕过 ===
--- 某些游戏检测 Camera.CFrame 是否被修改（自瞄检测）
-pcall(function()
-    local mt = getrawmetatable(game)
-    setreadonly(mt, false)
-    local oldIdx = mt.__index
-    mt.__index = newcclosure(function(self, key)
-        if self:IsA("Camera") and key == "CFrame" then
-            -- 返回真实 CFrame（自瞄修改的），但游戏检测时无法区分
-            return oldIdx(self, key)
-        end
-        return oldIdx(self, key)
-    end)
-    setreadonly(mt, true)
-end)
-
--- === 13. 位置/速度验证绕过 ===
--- 某些游戏通过 BodyVelocity/BodyPosition 检测飞行
--- 当游戏读取 BodyVelocity.Velocity 时返回零向量
-pcall(function()
-    local mt = getrawmetatable(game)
-    setreadonly(mt, false)
-    local oldIdx2 = mt.__index
-    mt.__index = newcclosure(function(self, key)
-        if self:IsA("BodyVelocity") and key == "Velocity" then
-            return Vector3.new(0, 0, 0)
-        end
-        if self:IsA("BodyGyro") and key == "CFrame" then
-            return CFrame.new()
-        end
-        if self:IsA("BodyPosition") and key == "Position" then
-            return Vector3.new(0, 0, 0)
-        end
-        return oldIdx2(self, key)
-    end)
-    setreadonly(mt, true)
-end)
-
--- === 14. 时间/帧率检测绕过 ===
--- 某些游戏检测 task.wait 或 tick 的异常
-pcall(function()
-    -- 防止通过 os.time / tick 检测时间加速
-    local oldTick = tick
-    -- 不修改 tick，但确保不会返回异常值
-end)
-
--- === 15. 透明度检测绕过 ===
--- 某些游戏检测角色透明度变化（隐身检测）
-pcall(function()
-    local mt = getrawmetatable(game)
-    setreadonly(mt, false)
-    local oldIdx3 = mt.__index
-    mt.__index = newcclosure(function(self, key)
-        if self:IsA("BasePart") and key == "Transparency" then
-            -- 如果是本地玩家角色的部件，返回正常透明度
-            local char = getCharacter()
-            if char then
-                local part = self
-                if part:IsDescendantOf(char) then
-                    return 0
-                end
-            end
-        end
-        if self:IsA("Decal") and key == "Transparency" then
-            local char = getCharacter()
-            if char then
-                if self:IsDescendantOf(char) then
-                    return 0
-                end
-            end
-        end
-        return oldIdx3(self, key)
-    end)
-    setreadonly(mt, true)
-end)
-
--- === 16. CanCollide 检测绕过 ===
--- 某些游戏检测 CanCollide 是否被修改（穿墙检测）
-pcall(function()
-    local mt = getrawmetatable(game)
-    setreadonly(mt, false)
-    local oldIdx4 = mt.__index
-    mt.__index = newcclosure(function(self, key)
-        if self:IsA("BasePart") and key == "CanCollide" then
-            local char = getCharacter()
-            if char and self:IsDescendantOf(char) then
-                return true -- 始终返回 true
-            end
-        end
-        return oldIdx4(self, key)
-    end)
-    setreadonly(mt, true)
-end)
-
--- === 17. Humanoid State 检测绕过 ===
--- 某些游戏检测 Humanoid 状态（如 Freefall/FallingDown）
-pcall(function()
-    local mt = getrawmetatable(game)
-    setreadonly(mt, false)
-    local oldNC4 = mt.__namecall
-    mt.__namecall = newcclosure(function(self, ...)
-        local method = getnamecallmethod()
-        if method == "GetState" and self:IsA("Humanoid") then
-            return Enum.HumanoidStateType.Running -- 始终返回 Running
-        end
-        if method == "GetStateEnabled" and self:IsA("Humanoid") then
-            local args = {...}
-            local state = args[1]
-            if state == Enum.HumanoidStateType.FallingDown or
-               state == Enum.HumanoidStateType.Freefall then
-                return true -- 假装这些状态是启用的
-            end
-        end
-        return oldNC4(self, ...)
-    end)
-    setreadonly(mt, true)
-end)
-
--- === 18. 禁用 StarterPlayerScripts 中的反作弊脚本 ===
-task.spawn(function()
-    pcall(function()
-        local sps = game:GetService("StarterPlayer"):FindFirstChild("StarterPlayerScripts")
-        if sps then
-            for _, child in ipairs(sps:GetDescendants()) do
-                if child:IsA("LocalScript") then
-                    local name = child.Name:lower()
-                    if name:find("anti") or name:find("kick") or name:find("detect") or
-                       name:find("exploit") or name:find("hack") or name:find("cheat") or
-                       name:find("security") or name:find("integrity") or name:find("validation") or
-                       name:find("sanity") or name:find("monitor") or name:find("protect") then
-                        pcall(function() child.Disabled = true end)
-                    end
-                end
-            end
-            sps.DescendantAdded:Connect(function(desc)
-                if desc:IsA("LocalScript") then
-                    local name = desc.Name:lower()
-                    if name:find("anti") or name:find("kick") or name:find("detect") or
-                       name:find("exploit") or name:find("hack") or name:find("cheat") then
-                        pcall(function() desc.Disabled = true end)
-                    end
-                end
-            end)
-        end
-    end)
-end)
-
--- === 19. ReplicatedFirst 反作弊禁用 ===
-task.spawn(function()
-    pcall(function()
-        local rf = game:GetService("ReplicatedFirst")
-        for _, child in ipairs(rf:GetDescendants()) do
-            if child:IsA("LocalScript") then
-                local name = child.Name:lower()
-                if name:find("anti") or name:find("kick") or name:find("detect") or
-                   name:find("exploit") or name:find("hack") or name:find("cheat") then
-                    pcall(function() child.Disabled = true end)
-                end
-            end
-        end
-    end)
-end)
-
--- === 20. Workspace 反作弊脚本禁用 ===
-task.spawn(function()
-    pcall(function()
-        for _, child in ipairs(Workspace:GetDescendants()) do
-            if child:IsA("Script") or child:IsA("LocalScript") then
-                local name = child.Name:lower()
-                if name:find("anti") or name:find("kick") or name:find("detect") or
-                   name:find("exploit") or name:find("hack") or name:find("cheat") or
-                   name:find("security") or name:find("protect") then
-                    pcall(function() child.Disabled = true end)
-                end
-            end
-        end
-    end)
-end)
-
--- === 21. PlayerGui 反作弊脚本禁用 ===
-task.spawn(function()
-    pcall(function()
-        local pg = player:FindFirstChild("PlayerGui")
-        if pg then
-            for _, child in ipairs(pg:GetDescendants()) do
-                if child:IsA("LocalScript") then
-                    local name = child.Name:lower()
-                    if name:find("anti") or name:find("kick") or name:find("detect") or
-                       name:find("exploit") or name:find("hack") or name:find("cheat") then
-                        pcall(function() child.Disabled = true end)
-                    end
-                end
-            end
-        end
-    end)
-end)
-
--- === 22. Backpack 反作弊脚本禁用 ===
-task.spawn(function()
-    pcall(function()
-        local bp = player:FindFirstChild("Backpack")
-        if bp then
-            for _, child in ipairs(bp:GetDescendants()) do
-                if child:IsA("LocalScript") then
-                    local name = child.Name:lower()
-                    if name:find("anti") or name:find("kick") or name:find("detect") or
-                       name:find("exploit") or name:find("hack") or name:find("cheat") then
-                        pcall(function() child.Disabled = true end)
-                    end
-                end
-            end
-            bp.DescendantAdded:Connect(function(desc)
-                if desc:IsA("LocalScript") then
-                    local name = desc.Name:lower()
-                    if name:find("anti") or name:find("kick") or name:find("detect") then
-                        pcall(function() desc.Disabled = true end)
-                    end
-                end
-            end)
-        end
-    end)
-end)
-
--- === 23. Character 反作弊脚本禁用 ===
+-- === Character 反作弊脚本禁用 ===
 task.spawn(function()
     pcall(function()
         player.CharacterAdded:Connect(function(char)
@@ -864,93 +393,41 @@ task.spawn(function()
     end)
 end)
 
--- === 24. CoreGui 反作弊保护 ===
+-- === StarterPlayerScripts / ReplicatedFirst / PlayerGui / Backpack 监控 ===
 task.spawn(function()
     pcall(function()
-        -- 防止游戏检测 ScreenGui 中的自定义 UI
-        local mt = getrawmetatable(game)
-        setreadonly(mt, false)
-        local oldNC5 = mt.__namecall
-        mt.__namecall = newcclosure(function(self, ...)
-            local method = getnamecallmethod()
-            if method == "GetChildren" or method == "GetDescendants" then
-                if self == CoreGui then
-                    -- 过滤掉我们的 GUI
-                    local results = oldNC5(self, ...)
-                    if type(results) == "table" then
-                        local filtered = {}
-                        for _, item in ipairs(results) do
-                            if item.Name ~= "XA_DevTool" and item.Name ~= "EspOverlay" then
-                                table.insert(filtered, item)
-                            end
+        local locations = {
+            game:GetService("StarterPlayer"):FindFirstChild("StarterPlayerScripts"),
+            game:GetService("ReplicatedFirst"),
+            player:FindFirstChild("PlayerGui"),
+            player:FindFirstChild("Backpack"),
+        }
+        for _, loc in ipairs(locations) do
+            if loc then
+                for _, child in ipairs(loc:GetDescendants()) do
+                    if child:IsA("LocalScript") then
+                        local name = child.Name:lower()
+                        if name:find("anti") or name:find("kick") or name:find("detect") or
+                           name:find("exploit") or name:find("hack") or name:find("cheat") then
+                            pcall(function() child.Disabled = true end)
                         end
-                        return filtered
                     end
                 end
+                loc.DescendantAdded:Connect(function(desc)
+                    if desc:IsA("LocalScript") then
+                        local name = desc.Name:lower()
+                        if name:find("anti") or name:find("kick") or name:find("detect") or
+                           name:find("exploit") or name:find("hack") or name:find("cheat") then
+                            pcall(function() desc.Disabled = true end)
+                        end
+                    end
+                end)
             end
-            return oldNC5(self, ...)
-        end)
-        setreadonly(mt, true)
+        end
     end)
 end)
 
--- === 25. 日志/报告系统绕过 ===
--- 防止游戏通过 LogService 或其他方式记录可疑行为
-pcall(function()
-    local LogService = game:GetService("LogService")
-    -- 不修改 LogService，但确保我们的操作不会被记录
-end)
-
--- === 26. Stats 检测绕过 ===
--- 某些游戏通过 Stats 服务检测异常数据
-pcall(function()
-    local mt = getrawmetatable(game)
-    setreadonly(mt, false)
-    local oldNC6 = mt.__namecall
-    mt.__namecall = newcclosure(function(self, ...)
-        local method = getnamecallmethod()
-        -- 拦截 GetAsync/GetSortedAsync 用于反作弊数据存储
-        if method == "GetAsync" or method == "GetSortedAsync" then
-            local args = {...}
-            for _, arg in ipairs(args) do
-                if type(arg) == "string" then
-                    local lowerArg = arg:lower()
-                    if lowerArg:find("ban") or lowerArg:find("kick") or
-                       lowerArg:find("flag") or lowerArg:find("report") then
-                        return nil
-                    end
-                end
-            end
-        end
-        -- 拦截 SetAsync/IncrementAsync 防止反作弊数据写入
-        if method == "SetAsync" or method == "IncrementAsync" or method == "UpdateAsync" then
-            local args = {...}
-            for _, arg in ipairs(args) do
-                if type(arg) == "string" then
-                    local lowerArg = arg:lower()
-                    if lowerArg:find("ban") or lowerArg:find("kick") or
-                       lowerArg:find("flag") or lowerArg:find("report") or
-                       lowerArg:find("exploit") or lowerArg:find("hack") then
-                        return nil
-                    end
-                end
-            end
-        end
-        return oldNC6(self, ...)
-    end)
-    setreadonly(mt, true)
-end)
-
--- === 27. 聊天系统绕过 ===
--- 防止通过聊天系统报告
-pcall(function()
-    local TextChatService = game:GetService("TextChatService")
-    if TextChatService then
-        -- 不修改聊天功能，只确保不会被用来检测
-    end
-end)
-
-print("[DevTool] Anti-Cheat Bypass System loaded - 27 layers active")
+print("[DevTool] Anti-Cheat Bypass System v2 loaded - Unified hooks active")
 
 -- ==================== Feature State Manager ====================
 -- 集中管理所有功能的连接和状态，防止泄漏
@@ -3099,4 +2576,4 @@ end)
 
 -- ==================== Init ====================
 switchTab("movement")
-print("[DevTool] XA Dev Backdoor v7.0 | Advanced Aimbot + 27-Layer AC Bypass | Key: xa3765360431")
+print("[DevTool] XA Dev Backdoor v7.1 | Anti-267 Fix | Key: xa3765360431")
