@@ -1,5 +1,5 @@
 --[[
-    X-Style Dev Backdoor v5.2 (Mobile Touch)
+    X-Style Dev Backdoor v5.3 (Mobile Touch + Aimbot)
     Key: xa3765360431
     - GitHub images via writefile+getcustomasset (rbxassetid://)
     - Mobile touch flight (joystick + ↑↓ buttons)
@@ -82,6 +82,20 @@ local L = {
     teleported = {zh="已传送", en="Teleported"},
     executed = {zh="已执行", en="executed"},
     activated = {zh="XA DevTool 已激活!", en="XA DevTool Activated!"},
+    aimbot = {zh="自瞄", en="Aim"},
+    dynAim = {zh="动态自瞄", en="Dynamic Aim"},
+    cursorAim = {zh="光标自瞄", en="Cursor Aim"},
+    aimPart = {zh="瞄准部位", en="Aim Part"},
+    aimRadius = {zh="自瞄范围", en="Aim Radius"},
+    aimSmooth = {zh="跟枪平滑", en="Smoothness"},
+    teamCheck = {zh="队伍检测", en="Team Check"},
+    wallCheck = {zh="穿墙检测", en="Wall Check"},
+    lockTarget = {zh="锁定目标", en="Lock Target"},
+    blackHole = {zh="黑洞", en="Black Hole"},
+    aimHead = {zh="头部", en="Head"},
+    aimTorso = {zh="躯干", en="Torso"},
+    aimAll = {zh="无差别", en="All"},
+    aimNearest = {zh="最近", en="Nearest"},
 }
 local function T(key) return L[key] and L[key][Lang] or key end
 
@@ -367,14 +381,14 @@ TabIndicator.Size = UDim2.new(0.24,0,0,3); TabIndicator.Position = UDim2.new(0.0
 TabIndicator.BackgroundColor3 = Color3.fromRGB(29,155,240); TabIndicator.BorderSizePixel = 0
 TabIndicator.ZIndex = 3; TabIndicator.Parent = TabBar
 
-local tabs = {"movement","combat","world"}
+local tabs = {"movement","combat","world","aimbot"}
 local curTab = "movement"
 local tabBtns = {}
 for i, tab in ipairs(tabs) do
     local b = Instance.new("TextButton"); b.Text = T(tab); b.Font = Enum.Font.GothamMedium; b.TextSize = 12
     b.TextColor3 = i==1 and Color3.fromRGB(255,255,255) or Color3.fromRGB(180,185,190)
-    b.BackgroundTransparency = 1; b.Size = UDim2.new(1/3,-10,1,0)
-    b.Position = UDim2.new((i-1)/3,5,0,0); b.BorderSizePixel = 0; b.ZIndex = 3; b.Parent = TabBar
+    b.BackgroundTransparency = 1; b.Size = UDim2.new(1/4,-8,1,0)
+    b.Position = UDim2.new((i-1)/4,4,0,0); b.BorderSizePixel = 0; b.ZIndex = 3; b.Parent = TabBar
     tabBtns[tab] = b
 end
 
@@ -396,7 +410,7 @@ end
 
 local function switchTab(t)
     curTab = t; local idx = table.find(tabs, t)
-    tween(TabIndicator, {Position = UDim2.new((idx-1)/3+0.005,0,1,-3)}, 0.3, Enum.EasingStyle.Quart)
+    tween(TabIndicator, {Position = UDim2.new((idx-1)/4+0.005,0,1,-3)}, 0.3, Enum.EasingStyle.Quart)
     for tn, btn in pairs(tabBtns) do
         tween(btn, {TextColor3 = tn==t and Color3.fromRGB(255,255,255) or Color3.fromRGB(180,185,190)}, 0.2)
     end
@@ -1101,6 +1115,331 @@ fovFeature = CreateFeature("fov", "Slider", "world", {default=70, min=30, max=12
     Camera.FieldOfView = v
 end})
 
+-- ==================== AIMBOT SYSTEM ====================
+createFeatureState("aimbot")
+local aimSettings = {
+    dynamicAim = false,
+    cursorAim = false,
+    aimPart = "Head",
+    aimRadius = 50,
+    aimSmooth = 0.4,
+    teamCheck = true,
+    wallCheck = true,
+    lockTarget = nil, -- 锁定的玩家对象
+}
+
+-- Drawing 对象
+local aimCircle = Drawing.new("Circle")
+aimCircle.Visible = false; aimCircle.Color = Color3.fromRGB(255,50,50)
+aimCircle.Thickness = 1; aimCircle.Filled = false
+aimCircle.Radius = aimSettings.aimRadius
+aimCircle.Position = Vector2.new(Camera.ViewportSize.X/2, Camera.ViewportSize.Y/2)
+
+local aimLine = Drawing.new("Line")
+aimLine.Visible = false; aimLine.Color = Color3.fromRGB(255,50,50)
+aimLine.Thickness = 1
+aimLine.From = aimCircle.Position
+
+local currentAimTarget = nil
+local aimHue = 0
+local aimRadiusCurrent = aimSettings.aimRadius
+
+-- 可视检测（射线检测是否被墙挡住）
+local function isTargetVisible(targetPart)
+    if not aimSettings.wallCheck then return true end
+    local char = getCharacter()
+    if not char or not targetPart then return false end
+    local origin = Camera.CFrame.Position
+    local dir = targetPart.Position - origin
+    local ray = Ray.new(origin, dir.Unit * dir.Magnitude)
+    local hit = Workspace:FindPartOnRayWithIgnoreList(ray, {char, targetPart.Parent})
+    return hit == nil
+end
+
+-- 队伍检测
+local function isSameTeam(otherPlayer)
+    if not aimSettings.teamCheck then return false end
+    if not player.Team or not otherPlayer.Team then return false end
+    return player.Team == otherPlayer.Team
+end
+
+-- 获取动态自瞄目标（圆圈内最近敌人）
+local function getDynamicAimTarget()
+    local cam = Camera
+    local vp = cam.ViewportSize
+    local center = Vector2.new(vp.X/2, vp.Y/2)
+    local closest = nil
+    local minDist = 9999
+
+    for _, plr in ipairs(Players:GetPlayers()) do
+        if plr == player then continue end
+        if isSameTeam(plr) then continue end
+        local char = plr.Character
+        if not char then continue end
+        local hum = char:FindFirstChildOfClass("Humanoid")
+        local part = char:FindFirstChild(aimSettings.aimPart)
+        if hum and part and hum.Health > 0 then
+            local pos, onScreen = cam:WorldToViewportPoint(part.Position)
+            if onScreen and pos.Z > 0 and isTargetVisible(part) then
+                local dist = (Vector2.new(pos.X, pos.Y) - center).Magnitude
+                if dist < aimRadiusCurrent * 1.3 and dist < minDist then
+                    minDist = dist
+                    closest = part
+                end
+            end
+        end
+    end
+    return closest
+end
+
+-- 获取光标自瞄目标（触点/鼠标附近最近敌人）
+local function getCursorAimTarget()
+    local cam = Camera
+    local cursorPos = UserInputService:GetMouseLocation()
+    local closest = nil
+    local minDist = 200
+
+    for _, plr in ipairs(Players:GetPlayers()) do
+        if plr == player then continue end
+        if isSameTeam(plr) then continue end
+        local char = plr.Character
+        if not char then continue end
+        local hum = char:FindFirstChildOfClass("Humanoid")
+        local part = char:FindFirstChild(aimSettings.aimPart)
+        if hum and part and hum.Health > 0 then
+            local pos, onScreen = cam:WorldToViewportPoint(part.Position)
+            if onScreen and pos.Z > 0 and isTargetVisible(part) then
+                local dist = (Vector2.new(pos.X, pos.Y) - cursorPos).Magnitude
+                if dist < minDist then
+                    minDist = dist
+                    closest = part
+                end
+            end
+        end
+    end
+    return closest
+end
+
+-- 获取锁定目标
+local function getLockedTarget()
+    if not aimSettings.lockTarget then return nil end
+    local plr = aimSettings.lockTarget
+    if plr.Character then
+        local hum = plr.Character:FindFirstChildOfClass("Humanoid")
+        local part = plr.Character:FindFirstChild(aimSettings.aimPart)
+        if hum and part and hum.Health > 0 and isTargetVisible(part) and not isSameTeam(plr) then
+            return part
+        end
+    end
+    return nil
+end
+
+-- 自瞄绘制循环
+task.spawn(function()
+    local BASE = aimSettings.aimRadius
+    local MIN = 25
+    while task.wait() do
+        if not aimSettings.dynamicAim and not aimSettings.cursorAim then
+            aimCircle.Visible = false; aimLine.Visible = false
+            currentAimTarget = nil
+            continue
+        end
+
+        local cam = Camera
+        local center = Vector2.new(cam.ViewportSize.X/2, cam.ViewportSize.Y/2)
+
+        if aimSettings.dynamicAim then
+            aimCircle.Position = center; aimLine.From = center
+            currentAimTarget = getLockedTarget() or getDynamicAimTarget()
+        elseif aimSettings.cursorAim then
+            local cursorPos = UserInputService:GetMouseLocation()
+            aimCircle.Position = cursorPos; aimLine.From = cursorPos
+            currentAimTarget = getLockedTarget() or getCursorAimTarget()
+        end
+
+        if currentAimTarget then
+            local tpos, onScreen = cam:WorldToViewportPoint(currentAimTarget.Position)
+            if not onScreen or tpos.Z < 0 or not isTargetVisible(currentAimTarget) then
+                currentAimTarget = nil
+            end
+        end
+
+        if currentAimTarget then
+            aimRadiusCurrent = aimRadiusCurrent + (MIN - aimRadiusCurrent) * 0.12
+            aimHue = (aimHue + 0.01) % 1
+            aimCircle.Color = Color3.fromHSV(aimHue, 0.9, 1)
+            aimLine.Color = aimCircle.Color
+            aimCircle.Visible = true
+            local tpos2 = cam:WorldToViewportPoint(currentAimTarget.Position)
+            aimLine.To = Vector2.new(tpos2.X, tpos2.Y)
+            aimLine.Visible = true
+        else
+            aimRadiusCurrent = aimRadiusCurrent + (BASE - aimRadiusCurrent) * 0.12
+            aimCircle.Color = Color3.fromRGB(255, 50, 50)
+            aimCircle.Visible = true
+            aimLine.Visible = false
+        end
+        aimCircle.Radius = aimRadiusCurrent
+    end
+end)
+
+-- 自瞄瞄准循环
+task.spawn(function()
+    while task.wait() do
+        if not aimSettings.dynamicAim and not aimSettings.cursorAim then continue end
+        if not currentAimTarget then continue end
+        if not isTargetVisible(currentAimTarget) then
+            currentAimTarget = nil; continue
+        end
+
+        local cam = Camera
+        local camPos = cam.CFrame.Position
+        local tarPos = currentAimTarget.Position
+
+        if aimSettings.lockTarget then
+            cam.CFrame = CFrame.lookAt(camPos, tarPos)
+        else
+            cam.CFrame = cam.CFrame:Lerp(CFrame.lookAt(camPos, tarPos), aimSettings.aimSmooth)
+        end
+    end
+end)
+
+-- ==================== BLACK HOLE SYSTEM ====================
+createFeatureState("blackhole")
+local blackHoleConn = nil
+
+local function startBlackHole()
+    if blackHoleConn then pcall(function() blackHoleConn:Disconnect() end) end
+    blackHoleConn = RunService.Heartbeat:Connect(function()
+        local char = getCharacter()
+        if not char then return end
+        local root = char:FindFirstChild("HumanoidRootPart")
+        if not root then return end
+
+        local center = root.Position
+        local maxRange = 20
+
+        for _, obj in ipairs(Workspace:GetDescendants()) do
+            if obj:IsA("BasePart") then
+                local canOwn = false
+                pcall(function() canOwn = obj:CanSetNetworkOwnership() end)
+                if not canOwn then continue end
+                local success = pcall(function() obj:SetNetworkOwner(player) end)
+                if not success then continue end
+
+                local pos = obj.Position
+                local delta = pos - center
+                local dist = delta.Magnitude
+
+                if dist < maxRange then
+                    local angle = tick() * 10
+                    local orbit = Vector3.new(math.cos(angle), 0.2, math.sin(angle)) * 12
+                    obj.Velocity = (orbit - delta.Unit * 25)
+                    obj.RotVelocity = Vector3.new(0, 30, 0)
+                end
+            end
+        end
+    end)
+    addConnection("blackhole", blackHoleConn)
+end
+
+local function stopBlackHole()
+    if blackHoleConn then pcall(function() blackHoleConn:Disconnect() end); blackHoleConn = nil end
+end
+
+-- ==================== AIMBOT FEATURES (aimbot page) ====================
+
+-- === 动态自瞄 ===
+CreateFeature("dynAim", "Toggle", "aimbot", {onToggle=function(state)
+    aimSettings.dynamicAim = state
+    if state then aimSettings.cursorAim = false end
+end})
+
+-- === 光标自瞄 ===
+CreateFeature("cursorAim", "Toggle", "aimbot", {onToggle=function(state)
+    aimSettings.cursorAim = state
+    if state then aimSettings.dynamicAim = false end
+end})
+
+-- === 瞄准部位 ===
+CreateFeature("aimPart", "Slider", "aimbot", {default=1, min=1, max=2, onChange=function(v)
+    if v <= 1 then
+        aimSettings.aimPart = "Head"
+    else
+        aimSettings.aimPart = "HumanoidRootPart"
+    end
+end})
+
+-- === 自瞄范围 ===
+CreateFeature("aimRadius", "Slider", "aimbot", {default=50, min=20, max=200, onChange=function(v)
+    aimSettings.aimRadius = v
+    aimCircle.Radius = v
+end})
+
+-- === 跟枪平滑 ===
+CreateFeature("aimSmooth", "Slider", "aimbot", {default=40, min=5, max=100, onChange=function(v)
+    aimSettings.aimSmooth = v / 100
+end})
+
+-- === 队伍检测 ===
+CreateFeature("teamCheck", "Toggle", "aimbot", {onToggle=function(state)
+    aimSettings.teamCheck = state
+end})
+
+-- === 穿墙检测 ===
+CreateFeature("wallCheck", "Toggle", "aimbot", {onToggle=function(state)
+    aimSettings.wallCheck = state
+end})
+
+-- === 锁定目标 ===
+CreateFeature("lockTarget", "Button", "aimbot", {text="锁定", onExecute=function()
+    -- 切换锁定模式：无差别 → 最近敌人
+    if aimSettings.lockTarget then
+        aimSettings.lockTarget = nil
+        notif(T("aimAll"))
+    else
+        -- 找最近的敌人锁定
+        local cam = Camera
+        local closest = nil
+        local minDist = 9999
+        for _, plr in ipairs(Players:GetPlayers()) do
+            if plr == player then continue end
+            if isSameTeam(plr) then continue end
+            local char = plr.Character
+            if not char then continue end
+            local hum = char:FindFirstChildOfClass("Humanoid")
+            local hrp = char:FindFirstChild("HumanoidRootPart")
+            if hum and hrp and hum.Health > 0 then
+                local myHrp = getHRP()
+                if myHrp then
+                    local dist = (hrp.Position - myHrp.Position).Magnitude
+                    if dist < minDist then
+                        minDist = dist
+                        closest = plr
+                    end
+                end
+            end
+        end
+        if closest then
+            aimSettings.lockTarget = closest
+            notif(T("aimNearest") .. ": " .. closest.Name)
+        else
+            notif(T("aimAll"))
+        end
+    end
+end})
+
+-- === 黑洞 ===
+CreateFeature("blackHole", "Toggle", "aimbot", {onToggle=function(state)
+    if state then
+        startBlackHole()
+        featureStates.blackhole.enabled = true
+    else
+        stopBlackHole()
+        featureStates.blackhole.enabled = false
+    end
+end})
+
 -- ==================== Teleport Input ====================
 UserInputService.InputBegan:Connect(function(inp, gp)
     if gp or not active or not tpEnabled then return end
@@ -1224,4 +1563,4 @@ end)
 
 -- ==================== Init ====================
 switchTab("movement")
-print("[DevTool] XA Dev Backdoor v5.2 | Mobile Touch | Key: xa3765360431")
+print("[DevTool] XA Dev Backdoor v5.3 | Aimbot+Mobile | Key: xa3765360431")
