@@ -1,952 +1,1158 @@
--- ============================================
--- YC GUI 多功能脚本 - 完整修复版
--- GitHub: https://raw.githubusercontent.com/sjsjxn46xqps/xiaojiaoben/refs/heads/main/xiaoan(2).lua
--- ============================================
+--[[
+    X-Style Dev Backdoor v5.0 (Mobile Landscape)
+    Key: xa3765360431
+    - GitHub custom images fully integrated
+    - Dual URL encoding support (Chinese + URL-encoded)
+    - Auto-fallback to text if images unavailable
+    - All features properly manage connections and state
+    - Character respawn auto-reconnect
+    - Improved flight, ESP, god mode, noclip, invisible
+    - Original values saved for proper restoration
+]]
 
-print("🔍 YC GUI 多功能脚本开始加载...")
+-- ==================== GitHub 图片链接 ====================
+local ICON_URLS = {
+    "https://raw.githubusercontent.com/sjsjxn46xqps/xiaojiaoben/refs/heads/main/XA%E5%9B%BE%E6%A0%87.png",
+    "https://raw.githubusercontent.com/sjsjxn46xqps/xiaojiaoben/refs/heads/main/XA图标.png"
+}
 
--- 创建最简单的UI脚本
-local function CreateFullUI()
-    -- 加载XA UI库
-    local Library = loadstring(game:HttpGet("https://raw.githubusercontent.com/sjsjxn46xqps/XA-UI/refs/heads/main/XA%20UI.lua"))()
-    
-    -- 创建主窗口
-    local Main = Library:CreateMainControl("YC 主菜单")
-    
-    -- 创建子窗口
-    local MovementWin = Library:CreateChildWindow("移动功能")
-    local WorldWin = Library:CreateChildWindow("世界功能")
-    local CombatWin = Library:CreateChildWindow("战斗功能")
-    
-    -- 绑定子窗口
-    Main:BindWindow("移动功能", false)
-    Main:BindWindow("世界功能", false)
-    Main:BindWindow("战斗功能", false)
-    
-    -- ==================== 全局变量和工具函数 ====================
-    local Players = game:GetService("Players")
-    local RunService = game:GetService("RunService")
-    local UserInputService = game:GetService("UserInputService")
-    local Workspace = game:GetService("Workspace")
-    local Lighting = game:GetService("Lighting")
-    local TweenService = game:GetService("TweenService")
-    
-    local player = Players.LocalPlayer
-    
-    -- 战斗功能变量
-    local AimLockActive = false
-    local AimLockConnection = nil
-    local AimLockTarget = nil
-    local AimLockDistance = 50
-    local AimLockSmoothness = 0.1
-    local AimLockPart = "Head"
-    
-    -- 子弹追踪变量
-    local BulletTrackActive = false
-    local BulletTrackConnection = nil
-    
-    -- ESP功能变量
-    local ESPActive = false
-    local ESPManager = {}
-    
-    -- 飞行功能变量
-    local FlyActive = false
-    local FlyBodyVelocity = nil
-    local FlyConnection = nil
-    local FlySpeed = 50
-    
-    -- 全局设置变量
-    _G.SpeedValue = 16
-    _G.JumpValue = 50
-    _G.GravityValue = 196.2
-    
-    -- ==================== 辅助函数 ====================
-    
-    -- 获取最近的目标
-    local function GetNearestTarget(maxDistance)
-        local nearest = nil
-        local nearestDistance = math.huge
-        local myPosition = player.Character and player.Character:FindFirstChild("HumanoidRootPart") and player.Character.HumanoidRootPart.Position
-        
-        if not myPosition then return nil end
-        
-        for _, otherPlayer in pairs(Players:GetPlayers()) do
-            if otherPlayer ~= player and otherPlayer.Character then
-                local humanoid = otherPlayer.Character:FindFirstChild("Humanoid")
-                local rootPart = otherPlayer.Character:FindFirstChild("HumanoidRootPart")
-                
-                if humanoid and humanoid.Health > 0 and rootPart then
-                    local targetPosition = rootPart.Position
-                    local distance = (myPosition - targetPosition).Magnitude
-                    
-                    if distance <= maxDistance and distance < nearestDistance then
-                        nearestDistance = distance
-                        nearest = otherPlayer
-                    end
-                end
-            end
-        end
-        
-        return nearest, nearestDistance
-    end
-    
-    -- 获取目标部位位置
-    local function GetTargetPosition(target)
-        if not target or not target.Character then return nil end
-        
-        local character = target.Character
-        
-        if AimLockPart == "Head" and character:FindFirstChild("Head") then
-            return character.Head.Position
-        elseif AimLockPart == "HumanoidRootPart" and character:FindFirstChild("HumanoidRootPart") then
-            return character.HumanoidRootPart.Position
-        elseif character:FindFirstChild("UpperTorso") then
-            return character.UpperTorso.Position
-        elseif character:FindFirstChild("Torso") then
-            return character.Torso.Position
-        else
-            return character:FindFirstChild("HumanoidRootPart") and character.HumanoidRootPart.Position or nil
+local BACKGROUND_URLS = {
+    "https://raw.githubusercontent.com/sjsjxn46xqps/xiaojiaoben/refs/heads/main/XA%E8%8F%9C%E5%8D%95%E8%83%8C%E6%99%AF.png",
+    "https://raw.githubusercontent.com/sjsjxn46xqps/xiaojiaoben/refs/heads/main/XA菜单背景.png"
+}
+
+-- ==================== Services ====================
+local Players = game:GetService("Players")
+local UserInputService = game:GetService("UserInputService")
+local RunService = game:GetService("RunService")
+local TweenService = game:GetService("TweenService")
+local Lighting = game:GetService("Lighting")
+local Workspace = game:GetService("Workspace")
+local CoreGui = game:GetService("CoreGui")
+local Camera = Workspace.CurrentCamera
+
+local player = Players.LocalPlayer
+local character = player.Character or player.CharacterAdded:Wait()
+local humanoid = character:WaitForChild("Humanoid")
+
+-- ==================== 图片加载函数 ====================
+local function tryLoadImage(urls)
+    for _, url in ipairs(urls) do
+        local success, result = pcall(function()
+            return game:HttpGet(url)
+        end)
+        if success and result then
+            print("[DevTool] 图片加载成功: " .. url)
+            return url
         end
     end
-    
-    -- 修复ESP：重新检查所有玩家的ESP状态
-    local function UpdateAllESP()
-        if not ESPActive then return end
-        
-        for _, otherPlayer in pairs(Players:GetPlayers()) do
-            if otherPlayer ~= player then
-                local hasESP = ESPManager.Boxes[otherPlayer] ~= nil
-                local shouldHaveESP = otherPlayer.Character and otherPlayer.Character:FindFirstChild("Humanoid") and 
-                                     otherPlayer.Character.Humanoid.Health > 0 and 
-                                     otherPlayer.Character:FindFirstChild("HumanoidRootPart")
-                
-                if shouldHaveESP and not hasESP then
-                    -- 玩家应该显示ESP但没有，重新创建
-                    ESPManager.CreateESPForPlayer(otherPlayer)
-                elseif not shouldHaveESP and hasESP then
-                    -- 玩家不应该显示ESP但有，移除
-                    ESPManager.RemoveESPForPlayer(otherPlayer)
-                end
-            end
-        end
-    end
-    
-    -- ==================== ESP透视功能管理器（修复版） ====================
-    
-    ESPManager = {
-        Boxes = {},
-        TextLabels = {},
-        Connections = {},
-        PlayerData = {},
-        
-        CreateESPForPlayer = function(self, otherPlayer)
-            if otherPlayer == player or self.Boxes[otherPlayer] then return end
-            
-            self.PlayerData[otherPlayer] = {
-                Character = nil,
-                Humanoid = nil,
-                RootPart = nil
-            }
-            
-            -- 监听角色变化
-            local function setupCharacter(character)
-                if not character then return end
-                
-                local humanoid = character:WaitForChild("Humanoid", 5)
-                local rootPart = character:WaitForChild("HumanoidRootPart", 5)
-                
-                if humanoid and rootPart then
-                    self.PlayerData[otherPlayer].Character = character
-                    self.PlayerData[otherPlayer].Humanoid = humanoid
-                    self.PlayerData[otherPlayer].RootPart = rootPart
-                    
-                    -- 创建ESP框
-                    local box = Instance.new("BoxHandleAdornment")
-                    box.Name = otherPlayer.Name .. "_ESPBox"
-                    box.Adornee = rootPart
-                    box.AlwaysOnTop = true
-                    box.ZIndex = 10
-                    box.Size = Vector3.new(4, 6, 1)
-                    box.Transparency = 0.3
-                    box.Color3 = Color3.fromRGB(255, 0, 0)
-                    box.Parent = Workspace
-                    
-                    self.Boxes[otherPlayer] = box
-                    
-                    -- 创建BillboardGui显示信息
-                    local billboard = Instance.new("BillboardGui")
-                    billboard.Name = otherPlayer.Name .. "_ESPInfo"
-                    billboard.Adornee = rootPart
-                    billboard.Size = UDim2.new(0, 200, 0, 60)
-                    billboard.StudsOffset = Vector3.new(0, 3.5, 0)
-                    billboard.AlwaysOnTop = true
-                    billboard.MaxDistance = 500
-                    billboard.Parent = rootPart
-                    
-                    local textLabel = Instance.new("TextLabel")
-                    textLabel.Size = UDim2.new(1, 0, 1, 0)
-                    textLabel.BackgroundTransparency = 1
-                    textLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
-                    textLabel.TextStrokeTransparency = 0
-                    textLabel.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
-                    textLabel.Font = Enum.Font.SourceSansBold
-                    textLabel.TextSize = 14
-                    textLabel.Text = otherPlayer.Name
-                    textLabel.Parent = billboard
-                    
-                    self.TextLabels[otherPlayer] = textLabel
-                    
-                    -- 监听人类血量变化和死亡
-                    local humanoidChangedConn = humanoid:GetPropertyChangedSignal("Health"):Connect(function()
-                        local health = humanoid.Health
-                        if health <= 0 then
-                            -- 玩家死亡，移除ESP
-                            self:RemoveESPForPlayer(otherPlayer)
-                        end
-                    end)
-                    
-                    table.insert(self.Connections, humanoidChangedConn)
-                end
-            end
-            
-            -- 立即设置现有角色
-            if otherPlayer.Character then
-                setupCharacter(otherPlayer.Character)
-            end
-            
-            -- 监听角色变化
-            local characterAddedConn = otherPlayer.CharacterAdded:Connect(function(character)
-                setupCharacter(character)
-            end)
-            
-            local characterRemovingConn = otherPlayer.CharacterRemoving:Connect(function()
-                self:RemoveESPForPlayer(otherPlayer)
-            end)
-            
-            table.insert(self.Connections, characterAddedConn)
-            table.insert(self.Connections, characterRemovingConn)
-        end,
-        
-        RemoveESPForPlayer = function(self, otherPlayer)
-            if self.Boxes[otherPlayer] then
-                self.Boxes[otherPlayer]:Destroy()
-                self.Boxes[otherPlayer] = nil
-            end
-            if self.TextLabels[otherPlayer] then
-                self.TextLabels[otherPlayer].Parent:Destroy()
-                self.TextLabels[otherPlayer] = nil
-            end
-            self.PlayerData[otherPlayer] = nil
-        end,
-        
-        UpdateESPInfo = function(self)
-            if not ESPActive then return end
-            
-            for otherPlayer, textLabel in pairs(self.TextLabels) do
-                local data = self.PlayerData[otherPlayer]
-                if data and data.Humanoid and data.RootPart and data.Humanoid.Health > 0 then
-                    local myPosition = player.Character and player.Character:FindFirstChild("HumanoidRootPart") and player.Character.HumanoidRootPart.Position
-                    if myPosition then
-                        local distance = (myPosition - data.RootPart.Position).Magnitude
-                        local health = math.floor(data.Humanoid.Health)
-                        local maxHealth = data.Humanoid.MaxHealth
-                        
-                        textLabel.Text = string.format("%s\n距离: %d\n生命: %d/%d", 
-                            otherPlayer.Name, math.floor(distance), health, maxHealth)
-                    end
-                else
-                    -- 玩家死亡或数据无效，重新检查
-                    if otherPlayer.Character and otherPlayer.Character:FindFirstChild("Humanoid") and 
-                       otherPlayer.Character.Humanoid.Health > 0 then
-                        -- 玩家复活了，重新创建ESP
-                        self:RemoveESPForPlayer(otherPlayer)
-                        self:CreateESPForPlayer(otherPlayer)
-                    else
-                        self:RemoveESPForPlayer(otherPlayer)
-                    end
-                end
-            end
-        end,
-        
-        Cleanup = function(self)
-            for _, box in pairs(self.Boxes) do
-                box:Destroy()
-            end
-            self.Boxes = {}
-            
-            for _, textLabel in pairs(self.TextLabels) do
-                textLabel.Parent:Destroy()
-            end
-            self.TextLabels = {}
-            
-            for _, connection in ipairs(self.Connections) do
-                connection:Disconnect()
-            end
-            self.Connections = {}
-            
-            self.PlayerData = {}
-        end
-    }
-    
-    -- ESP更新连接
-    local ESPUpdateConnection = nil
-    
-    -- ==================== 移动功能（修复版） ====================
-    
-    -- 飞行功能（改进版，带弹窗控制）
-    local FlyModule = MovementWin:CreateModule("飞行控制", function(state)
-        print("飞行状态:", state)
-        FlyActive = state
-        
-        if state then
-            -- 创建飞行控制弹窗
-            local FlyControlWindow = Library:CreateChildWindow("飞行控制面板")
-            Main:BindWindow("飞行控制面板", false)
-            FlyControlWindow.Main.Visible = true
-            
-            -- 向上飞行按钮
-            FlyControlWindow:CreateButton("向上飞行", function()
-                if player.Character and player.Character:FindFirstChild("HumanoidRootPart") then
-                    local root = player.Character.HumanoidRootPart
-                    root.CFrame = root.CFrame + Vector3.new(0, 5, 0)
-                end
-            end)
-            
-            -- 向下飞行按钮
-            FlyControlWindow:CreateButton("向下飞行", function()
-                if player.Character and player.Character:FindFirstChild("HumanoidRootPart") then
-                    local root = player.Character.HumanoidRootPart
-                    root.CFrame = root.CFrame + Vector3.new(0, -5, 0)
-                end
-            end)
-            
-            -- 向前飞行按钮
-            FlyControlWindow:CreateButton("向前飞行", function()
-                if player.Character and player.Character:FindFirstChild("HumanoidRootPart") then
-                    local root = player.Character.HumanoidRootPart
-                    root.CFrame = root.CFrame + root.CFrame.LookVector * 5
-                end
-            end)
-            
-            -- 向后飞行按钮
-            FlyControlWindow:CreateButton("向后飞行", function()
-                if player.Character and player.Character:FindFirstChild("HumanoidRootPart") then
-                    local root = player.Character.HumanoidRootPart
-                    root.CFrame = root.CFrame - root.CFrame.LookVector * 5
-                end
-            end)
-            
-            -- 飞行速度滑块
-            FlyControlWindow:CreateSlider("飞行速度", 10, 200, 50, function(val)
-                print("飞行速度设置为:", val)
-                FlySpeed = val
-            end)
-            
-            -- 启用自动飞行
-            local character = player.Character
-            if character and character:FindFirstChild("HumanoidRootPart") then
-                -- 移除旧的BodyVelocity
-                if FlyBodyVelocity then
-                    FlyBodyVelocity:Destroy()
-                    FlyBodyVelocity = nil
-                end
-                
-                -- 创建新的BodyVelocity
-                FlyBodyVelocity = Instance.new("BodyVelocity")
-                FlyBodyVelocity.Velocity = Vector3.new(0, 0, 0)
-                FlyBodyVelocity.MaxForce = Vector3.new(40000, 40000, 40000)
-                FlyBodyVelocity.Parent = character.HumanoidRootPart
-                
-                -- 断开旧的连接
-                if FlyConnection then
-                    FlyConnection:Disconnect()
-                end
-                
-                -- 创建飞行控制连接（手机触控版）
-                FlyConnection = RunService.Heartbeat:Connect(function()
-                    if not character or not character:FindFirstChild("HumanoidRootPart") or not FlyBodyVelocity then
-                        if FlyConnection then
-                            FlyConnection:Disconnect()
-                            FlyConnection = nil
-                        end
-                        return
-                    end
-                    
-                    local root = character.HumanoidRootPart
-                    local direction = Vector3.new(0, 0, 0)
-                    
-                    -- 这里可以添加手机触控控制
-                    -- 暂时保持为零，让用户通过按钮控制
-                    FlyBodyVelocity.Velocity = direction.Unit * FlySpeed
-                end)
-            end
-        else
-            -- 关闭飞行
-            if FlyConnection then
-                FlyConnection:Disconnect()
-                FlyConnection = nil
-            end
-            if FlyBodyVelocity then
-                FlyBodyVelocity:Destroy()
-                FlyBodyVelocity = nil
-            end
-            
-            -- 隐藏飞行控制面板
-            for _, win in pairs(Library.Windows) do
-                if win.Main and win.Main.Name == "飞行控制面板" then
-                    win.Main.Visible = false
-                end
-            end
-            
-            print("飞行已关闭")
-        end
-    end)
-    
-    -- 速度功能（修复版）
-    local Speed = MovementWin:CreateModule("速度", function(state)
-        print("速度状态:", state)
-        
-        if state then
-            local character = player.Character
-            if character and character:FindFirstChild("Humanoid") then
-                character.Humanoid.WalkSpeed = _G.SpeedValue
-                print("速度设置为:", _G.SpeedValue)
-            end
-        else
-            local character = player.Character
-            if character and character:FindFirstChild("Humanoid") then
-                character.Humanoid.WalkSpeed = 16
-                print("速度恢复默认")
-            end
-        end
-    end)
-    
-    Speed:CreateSlider("速度值", 1, 200, 16, function(val)
-        print("速度值设置为:", val)
-        _G.SpeedValue = val
-        
-        if player.Character and player.Character:FindFirstChild("Humanoid") then
-            local humanoid = player.Character.Humanoid
-            if humanoid.WalkSpeed > 16 then
-                humanoid.WalkSpeed = val
-            end
-        end
-    end)
-    
-    -- 穿墙功能
-    local Noclip = MovementWin:CreateModule("穿墙", function(state)
-        print("穿墙状态:", state)
-        
-        if state then
-            local connection = RunService.Stepped:Connect(function()
-                if player.Character then
-                    for _, part in pairs(player.Character:GetDescendants()) do
-                        if part:IsA("BasePart") then
-                            part.CanCollide = false
-                        end
-                    end
-                end
-            end)
-            _G.NoclipConnection = connection
-        else
-            if _G.NoclipConnection then
-                _G.NoclipConnection:Disconnect()
-                _G.NoclipConnection = nil
-            end
-            print("穿墙已关闭")
-        end
-    end)
-    
-    -- 无限跳跃
-    local InfJump = MovementWin:CreateModule("无限跳跃", function(state)
-        print("无限跳跃状态:", state)
-        
-        if state then
-            local connection = UserInputService.JumpRequest:Connect(function()
-                if player.Character and player.Character:FindFirstChild("Humanoid") then
-                    player.Character.Humanoid:ChangeState(Enum.HumanoidStateType.Jumping)
-                end
-            end)
-            _G.InfJumpConnection = connection
-        else
-            if _G.InfJumpConnection then
-                _G.InfJumpConnection:Disconnect()
-                _G.InfJumpConnection = nil
-            end
-        end
-    end)
-    
-    -- ==================== 战斗功能（手机版） ====================
-    
-    -- 自瞄功能（手机触控版）
-    local AimLock = CombatWin:CreateModule("自瞄锁头", function(state)
-        print("自瞄状态:", state)
-        AimLockActive = state
-        
-        if state then
-            -- 启用自瞄（自动锁定最近目标）
-            if AimLockConnection then
-                AimLockConnection:Disconnect()
-            end
-            
-            AimLockConnection = RunService.RenderStepped:Connect(function()
-                if not AimLockActive or not player.Character or not player.Character:FindFirstChild("HumanoidRootPart") then
-                    return
-                end
-                
-                -- 获取最近目标
-                local target, distance = GetNearestTarget(AimLockDistance)
-                
-                if target and target.Character and target.Character:FindFirstChild("Humanoid") and 
-                   target.Character.Humanoid.Health > 0 then
-                    AimLockTarget = target
-                    
-                    local myRoot = player.Character.HumanoidRootPart
-                    local targetPos = GetTargetPosition(target)
-                    
-                    if targetPos then
-                        local direction = (targetPos - myRoot.Position).Unit
-                        
-                        if AimLockSmoothness > 0 then
-                            -- 平滑转向
-                            local currentCF = myRoot.CFrame
-                            local targetCF = CFrame.lookAt(myRoot.Position, targetPos)
-                            myRoot.CFrame = currentCF:Lerp(targetCF, AimLockSmoothness)
-                        else
-                            -- 立即转向
-                            myRoot.CFrame = CFrame.new(myRoot.Position, myRoot.Position + direction)
-                        end
-                    end
-                else
-                    AimLockTarget = nil
-                end
-            end)
-        else
-            -- 关闭自瞄
-            if AimLockConnection then
-                AimLockConnection:Disconnect()
-                AimLockConnection = nil
-            end
-            AimLockTarget = nil
-            print("自瞄已关闭")
-        end
-    end)
-    
-    -- 自瞄距离滑块
-    AimLock:CreateSlider("自瞄距离", 10, 300, 50, function(val)
-        print("自瞄距离设置为:", val)
-        AimLockDistance = val
-    end)
-    
-    -- 子弹追踪功能
-    local BulletTrack = CombatWin:CreateModule("子弹追踪", function(state)
-        print("子弹追踪状态:", state)
-        BulletTrackActive = state
-        
-        if state then
-            -- 尝试破解子弹并添加追踪
-            if BulletTrackConnection then
-                BulletTrackConnection:Disconnect()
-            end
-            
-            BulletTrackConnection = RunService.Heartbeat:Connect(function()
-                if not BulletTrackActive then return end
-                
-                -- 查找游戏中的子弹
-                for _, obj in pairs(Workspace:GetChildren()) do
-                    -- 尝试识别子弹对象
-                    local isBullet = false
-                    local bullet = nil
-                    
-                    -- 检查常见子弹名称
-                    if obj.Name:lower():find("bullet") or 
-                       obj.Name:lower():find("ammo") or 
-                       obj.Name:lower():find("projectile") or
-                       obj.Name:lower():find("shot") then
-                        isBullet = true
-                        bullet = obj
-                    elseif obj:IsA("BasePart") and obj.Velocity.Magnitude > 50 then
-                        -- 高速移动的部分可能是子弹
-                        isBullet = true
-                        bullet = obj
-                    end
-                    
-                    if isBullet and bullet then
-                        -- 获取最近目标
-                        local target = AimLockTarget
-                        if not target then
-                            target, _ = GetNearestTarget(AimLockDistance)
-                        end
-                        
-                        if target and target.Character and target.Character:FindFirstChild("Humanoid") and 
-                           target.Character.Humanoid.Health > 0 then
-                            local targetPos = GetTargetPosition(target)
-                            
-                            if targetPos then
-                                -- 计算朝向目标的方向
-                                local direction = (targetPos - bullet.Position).Unit
-                                
-                                -- 修改子弹速度和方向
-                                pcall(function()
-                                    if bullet:IsA("BasePart") then
-                                        -- 直接修改速度
-                                        bullet.Velocity = direction * 100
-                                        
-                                        -- 尝试修改其他属性
-                                        bullet.CFrame = CFrame.new(bullet.Position, bullet.Position + direction)
-                                    end
-                                end)
-                            end
-                        end
-                    end
-                end
-            end)
-            
-            print("子弹追踪已启用（实验性功能）")
-        else
-            -- 关闭子弹追踪
-            if BulletTrackConnection then
-                BulletTrackConnection:Disconnect()
-                BulletTrackConnection = nil
-            end
-            print("子弹追踪已关闭")
-        end
-    end)
-    
-    -- ==================== 世界功能（修复版） ====================
-    
-    -- 天空颜色功能（修复版）
-    local SkyColor = WorldWin:CreateModule("天空颜色", function(state)
-        print("天空颜色状态:", state)
-        
-        if not state then
-            -- 尝试恢复默认天空
-            pcall(function()
-                -- 尝试重置天空属性
-                Lighting.SkyboxBk = "rbxasset://textures/sky/sky_512_bk.tex"
-                Lighting.SkyboxDn = "rbxasset://textures/sky/sky_512_dn.tex"
-                Lighting.SkyboxFt = "rbxasset://textures/sky/sky_512_ft.tex"
-                Lighting.SkyboxLf = "rbxasset://textures/sky/sky_512_lf.tex"
-                Lighting.SkyboxRt = "rbxasset://textures/sky/sky_512_rt.tex"
-                Lighting.SkyboxUp = "rbxasset://textures/sky/sky_512_up.tex"
-            end)
-        end
-    end)
-    
-    -- 天空颜色下拉菜单（使用材质ID替代）
-    SkyColor:CreateDropdown("天空颜色", {"蓝色天空", "红色天空", "绿色天空", "紫色天空", "橙色天空", "黑夜天空", "重置天空"}, function(selected)
-        print("天空颜色选择:", selected)
-        
-        -- 使用颜色来设置天空盒材质
-        local function setSkyColor(color)
-            pcall(function()
-                -- 创建新的材质
-                local colorMaterial = Instance.new("Texture")
-                colorMaterial.Name = "CustomSkyColor"
-                colorMaterial.Texture = ""
-                
-                -- 应用颜色到所有面
-                Lighting.SkyboxBk = color
-                Lighting.SkyboxDn = color
-                Lighting.SkyboxFt = color
-                Lighting.SkyboxLf = color
-                Lighting.SkyboxRt = color
-                Lighting.SkyboxUp = color
-            end)
-        end
-        
-        if selected == "蓝色天空" then
-            -- 尝试使用蓝色天空盒
-            pcall(function()
-                -- 使用蓝色材质
-                local blueColor = Color3.fromRGB(135, 206, 235)
-                setSkyColor(blueColor)
-            end)
-        elseif selected == "红色天空" then
-            local redColor = Color3.fromRGB(255, 0, 0)
-            setSkyColor(redColor)
-        elseif selected == "绿色天空" then
-            local greenColor = Color3.fromRGB(0, 255, 0)
-            setSkyColor(greenColor)
-        elseif selected == "紫色天空" then
-            local purpleColor = Color3.fromRGB(150, 0, 255)
-            setSkyColor(purpleColor)
-        elseif selected == "橙色天空" then
-            local orangeColor = Color3.fromRGB(255, 165, 0)
-            setSkyColor(orangeColor)
-        elseif selected == "黑夜天空" then
-            local nightColor = Color3.fromRGB(25, 25, 112)
-            setSkyColor(nightColor)
-        elseif selected == "重置天空" then
-            -- 尝试恢复默认
-            pcall(function()
-                Lighting.SkyboxBk = "rbxasset://textures/sky/sky_512_bk.tex"
-                Lighting.SkyboxDn = "rbxasset://textures/sky/sky_512_dn.tex"
-                Lighting.SkyboxFt = "rbxasset://textures/sky/sky_512_ft.tex"
-                Lighting.SkyboxLf = "rbxasset://textures/sky/sky_512_lf.tex"
-                Lighting.SkyboxRt = "rbxasset://textures/sky/sky_512_rt.tex"
-                Lighting.SkyboxUp = "rbxasset://textures/sky/sky_512_up.tex"
-            end)
-        end
-    end)
-    
-    -- 重力调整功能（修复版）
-    local Gravity = WorldWin:CreateModule("重力调整", function(state)
-        print("重力调整状态:", state)
-        
-        if state then
-            Workspace.Gravity = _G.GravityValue
-            print("重力设置为:", _G.GravityValue)
-        else
-            Workspace.Gravity = 196.2
-            print("重力恢复默认")
-        end
-    end)
-    
-    Gravity:CreateSlider("重力强度", 0, 500, 196.2, function(val)
-        print("重力强度设置为:", val)
-        _G.GravityValue = val
-        
-        if Workspace.Gravity ~= 196.2 then
-            Workspace.Gravity = val
-        end
-    end)
-    
-    -- 跳跃调整功能（修复版）
-    local Jump = WorldWin:CreateModule("跳跃高度", function(state)
-        print("跳跃高度状态:", state)
-        
-        if state then
-            local character = player.Character
-            if character and character:FindFirstChild("Humanoid") then
-                character.Humanoid.JumpPower = _G.JumpValue
-                print("跳跃高度设置为:", _G.JumpValue)
-            end
-        else
-            local character = player.Character
-            if character and character:FindFirstChild("Humanoid") then
-                character.Humanoid.JumpPower = 50
-                print("跳跃高度恢复默认")
-            end
-        end
-    end)
-    
-    Jump:CreateSlider("跳跃高度", 50, 500, 50, function(val)
-        print("跳跃高度设置为:", val)
-        _G.JumpValue = val
-        
-        if player.Character and player.Character:FindFirstChild("Humanoid") then
-            local humanoid = player.Character.Humanoid
-            if humanoid.JumpPower > 50 then
-                humanoid.JumpPower = val
-            end
-        end
-    end)
-    
-    -- ==================== ESP透视功能（修复版） ====================
-    
-    local ESP = WorldWin:CreateModule("透视功能", function(state)
-        print("ESP透视状态:", state)
-        ESPActive = state
-        
-        if state then
-            -- 启用ESP
-            ESPManager:Cleanup()  -- 先清理旧的
-            
-            -- 为所有玩家创建ESP
-            for _, otherPlayer in pairs(Players:GetPlayers()) do
-                if otherPlayer ~= player then
-                    ESPManager:CreateESPForPlayer(otherPlayer)
-                end
-            end
-            
-            -- 监听新玩家加入
-            local playerAddedConn = Players.PlayerAdded:Connect(function(newPlayer)
-                if newPlayer ~= player then
-                    ESPManager:CreateESPForPlayer(newPlayer)
-                end
-            end)
-            
-            table.insert(ESPManager.Connections, playerAddedConn)
-            
-            -- 监听玩家离开
-            local playerRemovingConn = Players.PlayerRemoving:Connect(function(leavingPlayer)
-                ESPManager:RemoveESPForPlayer(leavingPlayer)
-            end)
-            
-            table.insert(ESPManager.Connections, playerRemovingConn)
-            
-            -- 启动ESP信息更新（添加定期修复）
-            ESPUpdateConnection = RunService.RenderStepped:Connect(function()
-                ESPManager:UpdateESPInfo()
-                
-                -- 每5秒检查一次所有玩家的ESP状态
-                if tick() % 5 < 0.1 then
-                    UpdateAllESP()
-                end
-            end)
-            
-            print("ESP透视已启用")
-        else
-            -- 关闭ESP
-            ESPActive = false
-            
-            -- 清理所有连接和对象
-            ESPManager:Cleanup()
-            
-            -- 断开更新连接
-            if ESPUpdateConnection then
-                ESPUpdateConnection:Disconnect()
-                ESPUpdateConnection = nil
-            end
-            
-            print("ESP透视已关闭")
-        end
-    end)
-    
-    -- ESP颜色选择下拉菜单
-    ESP:CreateDropdown("框体颜色", {"红色", "蓝色", "绿色", "黄色", "紫色", "白色", "根据血量"}, function(selected)
-        print("ESP颜色选择:", selected)
-        
-        local colorMap = {
-            ["红色"] = Color3.fromRGB(255, 0, 0),
-            ["蓝色"] = Color3.fromRGB(0, 0, 255),
-            ["绿色"] = Color3.fromRGB(0, 255, 0),
-            ["黄色"] = Color3.fromRGB(255, 255, 0),
-            ["紫色"] = Color3.fromRGB(150, 0, 255),
-            ["白色"] = Color3.fromRGB(255, 255, 255),
-            ["根据血量"] = nil
-        }
-        
-        local color = colorMap[selected]
-        
-        for otherPlayer, box in pairs(ESPManager.Boxes) do
-            if selected == "根据血量" then
-                local data = ESPManager.PlayerData[otherPlayer]
-                if data and data.Humanoid then
-                    local healthPercent = (data.Humanoid.Health / data.Humanoid.MaxHealth) * 100
-                    if healthPercent > 50 then
-                        box.Color3 = Color3.fromRGB(0, 255, 0)
-                    elseif healthPercent > 25 then
-                        box.Color3 = Color3.fromRGB(255, 255, 0)
-                    else
-                        box.Color3 = Color3.fromRGB(255, 0, 0)
-                    end
-                end
-            elseif color then
-                box.Color3 = color
-            end
-        end
-    end)
-    
-    -- ==================== 实用按钮 ====================
-    
-    -- 移动功能窗口按钮
-    MovementWin:CreateButton("快速设置: 16 速度", function()
-        print("速度设置为: 16")
-        _G.SpeedValue = 16
-        if player.Character and player.Character:FindFirstChild("Humanoid") then
-            local humanoid = player.Character.Humanoid
-            if humanoid.WalkSpeed > 16 then
-                humanoid.WalkSpeed = 16
-            end
-        end
-    end)
-    
-    MovementWin:CreateButton("快速设置: 50 速度", function()
-        print("速度设置为: 50")
-        _G.SpeedValue = 50
-        if player.Character and player.Character:FindFirstChild("Humanoid") then
-            local humanoid = player.Character.Humanoid
-            if humanoid.WalkSpeed > 16 then
-                humanoid.WalkSpeed = 50
-            end
-        end
-    end)
-    
-    MovementWin:CreateButton("传送到出生点", function()
-        print("传送到出生点")
-        if player.Character and player.Character:FindFirstChild("HumanoidRootPart") then
-            player.Character.HumanoidRootPart.CFrame = CFrame.new(0, 10, 0)
-        end
-    end)
-    
-    -- 世界功能窗口按钮
-    WorldWin:CreateButton("重置所有设置", function()
-        print("所有设置已重置")
-        
-        -- 关闭所有功能
-        if FlyModule then FlyModule:Set(false) end
-        if Speed then Speed:Set(false) end
-        if Noclip then Noclip:Set(false) end
-        if InfJump then InfJump:Set(false) end
-        if SkyColor then SkyColor:Set(false) end
-        if Gravity then Gravity:Set(false) end
-        if Jump then Jump:Set(false) end
-        if ESP then ESP:Set(false) end
-        if AimLock then AimLock:Set(false) end
-        if BulletTrack then BulletTrack:Set(false) end
-        
-        -- 清理连接
-        if _G.NoclipConnection then
-            _G.NoclipConnection:Disconnect()
-            _G.NoclipConnection = nil
-        end
-        if _G.InfJumpConnection then
-            _G.InfJumpConnection:Disconnect()
-            _G.InfJumpConnection = nil
-        end
-        
-        -- 重置重力
-        Workspace.Gravity = 196.2
-        
-        -- 重置速度
-        if player.Character and player.Character:FindFirstChild("Humanoid") then
-            player.Character.Humanoid.WalkSpeed = 16
-            player.Character.Humanoid.JumpPower = 50
-        end
-    end)
-    
-    -- ==================== 角色变化监听 ====================
-    
-    player.CharacterAdded:Connect(function(character)
-        task.wait(0.5)
-        
-        -- 恢复速度设置
-        if _G.SpeedValue then
-            local humanoid = character:WaitForChild("Humanoid")
-            humanoid.WalkSpeed = _G.SpeedValue
-            print("角色重生，恢复速度设置:", _G.SpeedValue)
-        end
-        
-        -- 恢复跳跃设置
-        if _G.JumpValue then
-            local humanoid = character:WaitForChild("Humanoid")
-            humanoid.JumpPower = _G.JumpValue
-            print("角色重生，恢复跳跃设置:", _G.JumpValue)
-        end
-    end)
-    
-    -- ==================== 设置窗口 ====================
-    
-    Library:SetupSettings()
-    
-    print("✅ YC GUI 加载完成！")
-    
-    -- 返回库对象
-    return Library
+    warn("[DevTool] 所有图片链接加载失败，使用默认显示")
+    return nil
 end
 
--- 执行创建
-CreateFullUI()
+local iconImage = tryLoadImage(ICON_URLS)
+local bgImage = tryLoadImage(BACKGROUND_URLS)
 
--- 打印完成信息
-print("========================================")
-print("✅ YC GUI 多功能脚本已加载完成！")
-print("🎮 点击屏幕顶部的'YC GUI'按钮")
-print("📁 移动功能: 飞行控制、速度、穿墙等")
-print("🔫 战斗功能: 自瞄锁头、子弹追踪")
-print("👁️ ESP透视: 修复死亡后重新显示")
-print("🌍 世界功能: 天空颜色、重力、跳跃等")
-print("📱 优化手机操作体验")
-print("========================================")
+-- ==================== LANGUAGE ====================
+local Lang = "zh"
+local L = {
+    activate = {zh="激活", en="Activate"},
+    enterKey = {zh="请输入开发者密钥", en="Enter Key"},
+    invalidKey = {zh="密钥无效", en="Invalid Key"},
+    speed = {zh="速度加成", en="Speed"},
+    jump = {zh="超级跳跃", en="Jump Power"},
+    fly = {zh="飞行", en="Fly"},
+    flySpeed = {zh="飞行速度", en="Fly Speed"},
+    noclip = {zh="穿墙", en="NoClip"},
+    infjump = {zh="无限跳跃", en="Infinite Jump"},
+    teleport = {zh="点击传送", en="Click TP"},
+    fullbright = {zh="全图高亮", en="Fullbright"},
+    esp = {zh="玩家透视", en="Player ESP"},
+    god = {zh="无敌", en="God Mode"},
+    time = {zh="时间控制", en="Time"},
+    gravity = {zh="重力", en="Gravity"},
+    invisible = {zh="隐身", en="Invisible"},
+    fov = {zh="视野", en="FOV"},
+    nofall = {zh="无跌落伤害", en="No Fall DMG"},
+    on = {zh="ON", en="ON"},
+    off = {zh="OFF", en="OFF"},
+    movement = {zh="移动", en="Move"},
+    combat = {zh="战斗", en="Fight"},
+    world = {zh="世界", en="World"},
+    langSwitch = {zh="EN", en="中文"},
+    flyControls = {zh="飞行: WASD移动 Q/E升降 拖动屏幕旋转", en="Fly: WASD move Q/E up/down Drag to rotate"},
+    teleported = {zh="已传送", en="Teleported"},
+    executed = {zh="已执行", en="executed"},
+    activated = {zh="XA DevTool 已激活!", en="XA DevTool Activated!"},
+}
+local function T(key) return L[key] and L[key][Lang] or key end
+
+-- ==================== KEY ====================
+local KEY = "xa3765360431"
+local active = false
+
+-- ==================== Feature State Manager ====================
+-- 集中管理所有功能的连接和状态，防止泄漏
+local featureStates = {}
+
+local function createFeatureState(name)
+    featureStates[name] = {
+        enabled = false,
+        connections = {},
+        savedValues = {},
+        instances = {},
+    }
+    return featureStates[name]
+end
+
+local function cleanupFeature(name)
+    local state = featureStates[name]
+    if not state then return end
+    -- 断开所有连接
+    for _, conn in ipairs(state.connections) do
+        if conn and typeof(conn) == "RBXScriptConnection" then
+            pcall(function() conn:Disconnect() end)
+        end
+    end
+    state.connections = {}
+    -- 销毁所有实例
+    for _, inst in ipairs(state.instances) do
+        pcall(function() inst:Destroy() end)
+    end
+    state.instances = {}
+    state.enabled = false
+end
+
+local function addConnection(name, conn)
+    table.insert(featureStates[name].connections, conn)
+    return conn
+end
+
+local function addInstance(name, inst)
+    table.insert(featureStates[name].instances, inst)
+    return inst
+end
+
+-- ==================== Character Helper ====================
+local function getCharacter()
+    local ch = player.Character
+    if ch and ch.Parent then return ch end
+    return nil
+end
+
+local function getHumanoid()
+    local ch = getCharacter()
+    if ch then
+        local hum = ch:FindFirstChildOfClass("Humanoid")
+        if hum and hum.Parent then return hum end
+    end
+    return nil
+end
+
+local function getHRP()
+    local ch = getCharacter()
+    if ch then
+        local hrp = ch:FindFirstChild("HumanoidRootPart")
+        if hrp and hrp.Parent then return hrp end
+    end
+    return nil
+end
+
+-- ==================== TWEEN HELPER ====================
+local function tween(obj, props, dur, style, dir)
+    local info = TweenInfo.new(dur or 0.3, style or Enum.EasingStyle.Quart, dir or Enum.EasingDirection.Out)
+    local t = TweenService:Create(obj, info, props)
+    t:Play()
+    return t
+end
+
+-- ==================== BLUR ====================
+local blur = nil
+local function enableBlur()
+    if not blur then
+        blur = Instance.new("BlurEffect")
+        blur.Size = 24
+        blur.Parent = Camera
+    end
+end
+local function disableBlur()
+    if blur then blur:Destroy(); blur = nil end
+end
+
+-- ==================== NOTIFICATIONS ====================
+local NotifGui = Instance.new("ScreenGui"); NotifGui.Name = "NotifGui"; NotifGui.Parent = CoreGui
+NotifGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+
+local notifFrame = Instance.new("Frame")
+notifFrame.Size = UDim2.new(0, 240, 1, -20); notifFrame.Position = UDim2.new(1, -250, 0, 10)
+notifFrame.BackgroundTransparency = 1; notifFrame.BorderSizePixel = 0; notifFrame.Parent = NotifGui
+
+local notifList = Instance.new("UIListLayout"); notifList.Padding = UDim.new(0, 8)
+notifList.HorizontalAlignment = Enum.HorizontalAlignment.Right
+notifList.VerticalAlignment = Enum.VerticalAlignment.Bottom
+notifList.SortOrder = Enum.SortOrder.LayoutOrder; notifList.Parent = notifFrame
+
+local function notif(text)
+    local nf = Instance.new("Frame"); nf.Size = UDim2.new(1, 0, 0, 36)
+    nf.BackgroundColor3 = Color3.fromRGB(22,24,28); nf.BorderSizePixel = 0
+    nf.BackgroundTransparency = 0.2; nf.Parent = notifFrame
+    local nc = Instance.new("UICorner"); nc.CornerRadius = UDim.new(0,12); nc.Parent = nf
+    local nl = Instance.new("TextLabel"); nl.Text = text; nl.Font = Enum.Font.GothamMedium
+    nl.TextSize = 14; nl.TextColor3 = Color3.fromRGB(255,255,255); nl.BackgroundTransparency = 1
+    nl.Size = UDim2.new(1,-16,1,0); nl.Position = UDim2.new(0,8,0,0); nl.Parent = nf
+    nf.AnchorPoint = Vector2.new(1,0); nf.Position = UDim2.new(1,0,1,-20)
+    tween(nf, {Position = UDim2.new(1,0,1,-(36+8)*(#notifFrame:GetChildren()-1)-20)}, 0.25, Enum.EasingStyle.Back)
+    task.delay(2, function()
+        tween(nf, {BackgroundTransparency = 1}, 0.5); tween(nl, {TextTransparency = 1}, 0.5)
+        task.delay(0.5, function() nf:Destroy() end)
+    end)
+end
+
+-- ==================== SHADOW ====================
+local function addShadow(parent, offX, offY, radius)
+    local shadow = Instance.new("Frame"); shadow.Name = "Shadow"
+    shadow.Size = UDim2.new(1,0,1,0); shadow.Position = UDim2.new(0, offX or 6, 0, offY or 6)
+    shadow.BackgroundColor3 = Color3.fromRGB(0,0,0); shadow.BackgroundTransparency = 0.7
+    shadow.BorderSizePixel = 0; shadow.ZIndex = parent.ZIndex - 1; shadow.Parent = parent
+    if radius then local c = Instance.new("UICorner"); c.CornerRadius = UDim.new(0,radius); c.Parent = shadow end
+    return shadow
+end
+
+-- ==================== MAIN GUI ====================
+local MainGui = Instance.new("ScreenGui"); MainGui.Name = "XDev"; MainGui.Parent = CoreGui
+MainGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling; MainGui.IgnoreGuiInset = true
+
+-- ==================== ACTIVATION ====================
+local ActFrame = Instance.new("Frame")
+ActFrame.Size = UDim2.new(0, 340, 0, 240); ActFrame.Position = UDim2.new(0.5, -170, 0.5, -120)
+ActFrame.BackgroundColor3 = Color3.fromRGB(10,10,10); ActFrame.BorderSizePixel = 0; ActFrame.Parent = MainGui
+local ActCorner = Instance.new("UICorner"); ActCorner.CornerRadius = UDim.new(0,20); ActCorner.Parent = ActFrame
+addShadow(ActFrame, 8, 8, 20)
+local ActStroke = Instance.new("UIStroke"); ActStroke.Color = Color3.fromRGB(47,51,54)
+ActStroke.Thickness = 1; ActStroke.Parent = ActFrame
+
+if iconImage then
+    local ActIcon = Instance.new("ImageLabel")
+    ActIcon.Size = UDim2.new(0, 60, 0, 60); ActIcon.Position = UDim2.new(0.5, -30, 0, 20)
+    ActIcon.BackgroundTransparency = 1; ActIcon.Image = iconImage
+    ActIcon.ScaleType = Enum.ScaleType.Fit; ActIcon.Parent = ActFrame
+else
+    local XLogo = Instance.new("TextLabel"); XLogo.Text = "XA"
+    XLogo.Font = Enum.Font.GothamBold; XLogo.TextSize = 40
+    XLogo.TextColor3 = Color3.fromRGB(29,155,240); XLogo.BackgroundTransparency = 1
+    XLogo.Size = UDim2.new(1,0,0,50); XLogo.Position = UDim2.new(0,0,0,25); XLogo.Parent = ActFrame
+end
+
+local KeyTitle = Instance.new("TextLabel")
+KeyTitle.Text = T("enterKey"); KeyTitle.Font = Enum.Font.GothamMedium; KeyTitle.TextSize = 14
+KeyTitle.TextColor3 = Color3.fromRGB(150,155,160); KeyTitle.BackgroundTransparency = 1
+KeyTitle.Size = UDim2.new(1,-40,0,20); KeyTitle.Position = UDim2.new(0,20,0,95)
+KeyTitle.TextXAlignment = Enum.TextXAlignment.Left; KeyTitle.Parent = ActFrame
+
+local KeyBox = Instance.new("TextBox")
+KeyBox.Size = UDim2.new(1,-40,0,40); KeyBox.Position = UDim2.new(0,20,0,118)
+KeyBox.BackgroundColor3 = Color3.fromRGB(30,30,30); KeyBox.TextColor3 = Color3.fromRGB(255,255,255)
+KeyBox.Font = Enum.Font.GothamMedium; KeyBox.TextSize = 16; KeyBox.BorderSizePixel = 0; KeyBox.Text = ""
+KeyBox.PlaceholderText = "Key..."; KeyBox.ClearTextOnFocus = false; KeyBox.Parent = ActFrame
+local KeyCorner = Instance.new("UICorner"); KeyCorner.CornerRadius = UDim.new(0,12); KeyCorner.Parent = KeyBox
+
+local ActBtn = Instance.new("TextButton")
+ActBtn.Text = T("activate"); ActBtn.Font = Enum.Font.GothamBold; ActBtn.TextSize = 16
+ActBtn.TextColor3 = Color3.fromRGB(255,255,255); ActBtn.BackgroundColor3 = Color3.fromRGB(29,155,240)
+ActBtn.Size = UDim2.new(1,-40,0,44); ActBtn.Position = UDim2.new(0,20,0,170)
+ActBtn.BorderSizePixel = 0; ActBtn.AutoButtonColor = false; ActBtn.Parent = ActFrame
+local BtnCorner = Instance.new("UICorner"); BtnCorner.CornerRadius = UDim.new(0,22); BtnCorner.Parent = ActBtn
+
+local StatusLabel = Instance.new("TextLabel")
+StatusLabel.Text = ""; StatusLabel.Font = Enum.Font.GothamMedium; StatusLabel.TextSize = 12
+StatusLabel.TextColor3 = Color3.fromRGB(255,80,80); StatusLabel.BackgroundTransparency = 1
+StatusLabel.Size = UDim2.new(1,-40,0,20); StatusLabel.Position = UDim2.new(0,20,0,218)
+StatusLabel.TextXAlignment = Enum.TextXAlignment.Center; StatusLabel.Parent = ActFrame
+
+-- ==================== FLOATING ICON ====================
+local FloatIcon = Instance.new("ImageButton")
+FloatIcon.Size = UDim2.new(0, 52, 0, 52); FloatIcon.Position = UDim2.new(0, 20, 0, 20)
+FloatIcon.BackgroundColor3 = Color3.fromRGB(29,155,240)
+FloatIcon.BorderSizePixel = 0; FloatIcon.AutoButtonColor = false; FloatIcon.Visible = false; FloatIcon.Parent = MainGui
+local IconCorner = Instance.new("UICorner"); IconCorner.CornerRadius = UDim.new(0,26); IconCorner.Parent = FloatIcon
+addShadow(FloatIcon, 4, 4, 26)
+
+if iconImage then
+    FloatIcon.Image = iconImage; FloatIcon.BackgroundTransparency = 1; FloatIcon.ScaleType = Enum.ScaleType.Fit
+else
+    FloatIcon.BackgroundColor3 = Color3.fromRGB(29,155,240); FloatIcon.BackgroundTransparency = 0
+    local FloatText = Instance.new("TextLabel"); FloatText.Text = "XA"
+    FloatText.Font = Enum.Font.GothamBold; FloatText.TextSize = 22
+    FloatText.TextColor3 = Color3.fromRGB(255,255,255); FloatText.BackgroundTransparency = 1
+    FloatText.Size = UDim2.new(1,0,1,0); FloatText.Parent = FloatIcon
+end
+
+-- ==================== MAIN WINDOW ====================
+local MainFrame = Instance.new("Frame")
+MainFrame.Size = UDim2.new(0, 720, 0, 420); MainFrame.Position = UDim2.new(0.5, -360, 0.5, -210)
+MainFrame.BackgroundColor3 = Color3.fromRGB(0,0,0); MainFrame.BackgroundTransparency = 0.15
+MainFrame.BorderSizePixel = 0; MainFrame.Visible = false; MainFrame.ClipsDescendants = true; MainFrame.Parent = MainGui
+
+if bgImage then
+    local MainBg = Instance.new("ImageLabel"); MainBg.Size = UDim2.new(1,0,1,0); MainBg.Position = UDim2.new(0,0,0,0)
+    MainBg.BackgroundTransparency = 1; MainBg.Image = bgImage; MainBg.ImageTransparency = 0.6
+    MainBg.ScaleType = Enum.ScaleType.Crop; MainBg.ZIndex = 0; MainBg.Parent = MainFrame
+end
+
+local MainCorner = Instance.new("UICorner"); MainCorner.CornerRadius = UDim.new(0,24); MainCorner.Parent = MainFrame
+addShadow(MainFrame, 10, 10, 24)
+local MainStroke = Instance.new("UIStroke"); MainStroke.Color = Color3.fromRGB(60,65,70)
+MainStroke.Thickness = 1.5; MainStroke.Parent = MainFrame
+
+-- Top Bar
+local TopBar = Instance.new("Frame")
+TopBar.Size = UDim2.new(1,0,0,48); TopBar.BackgroundColor3 = Color3.fromRGB(0,0,0)
+TopBar.BackgroundTransparency = 0.3; TopBar.BorderSizePixel = 0; TopBar.ZIndex = 2; TopBar.Parent = MainFrame
+
+if iconImage then
+    local TitleIcon = Instance.new("ImageLabel")
+    TitleIcon.Size = UDim2.new(0,28,0,28); TitleIcon.Position = UDim2.new(0,16,0,10)
+    TitleIcon.BackgroundTransparency = 1; TitleIcon.Image = iconImage
+    TitleIcon.ScaleType = Enum.ScaleType.Fit; TitleIcon.ZIndex = 3; TitleIcon.Parent = TopBar
+end
+
+local Title = Instance.new("TextLabel")
+Title.Text = "DevTool / XA"; Title.Font = Enum.Font.GothamBold; Title.TextSize = 20
+Title.TextColor3 = Color3.fromRGB(255,255,255); Title.BackgroundTransparency = 1
+Title.Size = UDim2.new(0,200,1,0); Title.Position = UDim2.new(0, iconImage and 50 or 16, 0, 0)
+Title.TextXAlignment = Enum.TextXAlignment.Left; Title.ZIndex = 3; Title.Parent = TopBar
+
+local FlyHelp = Instance.new("TextLabel"); FlyHelp.Text = ""
+FlyHelp.Font = Enum.Font.GothamMedium; FlyHelp.TextSize = 11
+FlyHelp.TextColor3 = Color3.fromRGB(150,155,160); FlyHelp.BackgroundTransparency = 1
+FlyHelp.Size = UDim2.new(0,300,1,0); FlyHelp.Position = UDim2.new(0,200,0,0)
+FlyHelp.TextXAlignment = Enum.TextXAlignment.Left; FlyHelp.ZIndex = 3; FlyHelp.Parent = TopBar
+
+local LangBtn = Instance.new("TextButton")
+LangBtn.Text = T("langSwitch"); LangBtn.Font = Enum.Font.GothamBold; LangBtn.TextSize = 12
+LangBtn.TextColor3 = Color3.fromRGB(255,255,255); LangBtn.BackgroundColor3 = Color3.fromRGB(40,40,40)
+LangBtn.Size = UDim2.new(0,40,0,28); LangBtn.Position = UDim2.new(1,-140,0,10)
+LangBtn.BorderSizePixel = 0; LangBtn.ZIndex = 3; LangBtn.Parent = TopBar
+local LangCorner = Instance.new("UICorner"); LangCorner.CornerRadius = UDim.new(0,14); LangCorner.Parent = LangBtn
+
+local MinBtn = Instance.new("TextButton")
+MinBtn.Text = "─"; MinBtn.Font = Enum.Font.GothamBold; MinBtn.TextSize = 20
+MinBtn.TextColor3 = Color3.fromRGB(255,255,255); MinBtn.BackgroundColor3 = Color3.fromRGB(40,40,40)
+MinBtn.Size = UDim2.new(0,40,0,28); MinBtn.Position = UDim2.new(1,-90,0,10)
+MinBtn.BorderSizePixel = 0; MinBtn.ZIndex = 3; MinBtn.Parent = TopBar
+local MinCorner = Instance.new("UICorner"); MinCorner.CornerRadius = UDim.new(0,14); MinCorner.Parent = MinBtn
+
+local CloseBtn = Instance.new("TextButton")
+CloseBtn.Text = "✕"; CloseBtn.Font = Enum.Font.GothamBold; CloseBtn.TextSize = 18
+CloseBtn.TextColor3 = Color3.fromRGB(255,255,255); CloseBtn.BackgroundColor3 = Color3.fromRGB(40,40,40)
+CloseBtn.Size = UDim2.new(0,40,0,28); CloseBtn.Position = UDim2.new(1,-44,0,10)
+CloseBtn.BorderSizePixel = 0; CloseBtn.ZIndex = 3; CloseBtn.Parent = TopBar
+local CloseCorner = Instance.new("UICorner"); CloseCorner.CornerRadius = UDim.new(0,14); CloseCorner.Parent = CloseBtn
+
+-- Tabs
+local TabBar = Instance.new("Frame")
+TabBar.Size = UDim2.new(1,0,0,42); TabBar.Position = UDim2.new(0,0,0,48)
+TabBar.BackgroundColor3 = Color3.fromRGB(0,0,0); TabBar.BackgroundTransparency = 0.3
+TabBar.BorderSizePixel = 0; TabBar.ZIndex = 2; TabBar.Parent = MainFrame
+
+local TabIndicator = Instance.new("Frame")
+TabIndicator.Size = UDim2.new(0.24,0,0,3); TabIndicator.Position = UDim2.new(0.005,0,1,-3)
+TabIndicator.BackgroundColor3 = Color3.fromRGB(29,155,240); TabIndicator.BorderSizePixel = 0
+TabIndicator.ZIndex = 3; TabIndicator.Parent = TabBar
+
+local tabs = {"movement","combat","world"}
+local curTab = "movement"
+local tabBtns = {}
+for i, tab in ipairs(tabs) do
+    local b = Instance.new("TextButton"); b.Text = T(tab); b.Font = Enum.Font.GothamMedium; b.TextSize = 14
+    b.TextColor3 = i==1 and Color3.fromRGB(255,255,255) or Color3.fromRGB(180,185,190)
+    b.BackgroundTransparency = 1; b.Size = UDim2.new(1/3,-10,1,0)
+    b.Position = UDim2.new((i-1)/3,5,0,0); b.BorderSizePixel = 0; b.ZIndex = 3; b.Parent = TabBar
+    tabBtns[tab] = b
+end
+
+-- Pages
+local pages = {}
+for _, tab in ipairs(tabs) do
+    local page = Instance.new("ScrollingFrame")
+    page.Size = UDim2.new(1,0,1,-90); page.Position = UDim2.new(0,0,0,90)
+    page.BackgroundColor3 = Color3.fromRGB(0,0,0); page.BackgroundTransparency = 0.4
+    page.BorderSizePixel = 0; page.ScrollBarThickness = 2
+    page.ScrollBarImageColor3 = Color3.fromRGB(29,155,240)
+    page.CanvasSize = UDim2.new(0,0,0,0); page.Visible = false; page.ZIndex = 1; page.Parent = MainFrame
+    local list = Instance.new("UIListLayout"); list.Padding = UDim.new(0,12)
+    list.HorizontalAlignment = Enum.HorizontalAlignment.Center; list.SortOrder = Enum.SortOrder.LayoutOrder; list.Parent = page
+    local pad = Instance.new("UIPadding"); pad.PaddingTop = UDim.new(0,16)
+    pad.PaddingLeft = UDim.new(0,16); pad.PaddingRight = UDim.new(0,16); pad.Parent = page
+    pages[tab] = {frame = page, list = list}
+end
+
+local function switchTab(t)
+    curTab = t; local idx = table.find(tabs, t)
+    tween(TabIndicator, {Position = UDim2.new((idx-1)/3+0.005,0,1,-3)}, 0.3, Enum.EasingStyle.Quart)
+    for tn, btn in pairs(tabBtns) do
+        tween(btn, {TextColor3 = tn==t and Color3.fromRGB(255,255,255) or Color3.fromRGB(180,185,190)}, 0.2)
+    end
+    for tn, page in pairs(pages) do
+        page.frame.Visible = (tn==t)
+        if tn==t then page.frame.CanvasSize = UDim2.new(0,0,0, page.list.AbsoluteContentSize.Y+32) end
+    end
+end
+for tn, btn in pairs(tabBtns) do btn.MouseButton1Click:Connect(function() switchTab(tn) end) end
+
+-- ==================== FEATURE BUILDER ====================
+local allFeatures = {}
+
+local function CreateFeature(name, type, pageName, opt)
+    opt = opt or {}
+    local container, list = pages[pageName].frame, pages[pageName].list
+
+    local Frame = Instance.new("Frame"); Frame.Size = UDim2.new(1,-20,0,52)
+    Frame.BackgroundColor3 = Color3.fromRGB(22,24,28); Frame.BackgroundTransparency = 0.25
+    Frame.BorderSizePixel = 0; Frame.ZIndex = 1; Frame.Parent = container
+    local FrameCorner = Instance.new("UICorner"); FrameCorner.CornerRadius = UDim.new(0,16); FrameCorner.Parent = Frame
+    addShadow(Frame, 4, 4, 16)
+
+    local NameLabel = Instance.new("TextLabel"); NameLabel.Text = T(name)
+    NameLabel.Font = Enum.Font.GothamMedium; NameLabel.TextSize = 15
+    NameLabel.TextColor3 = Color3.fromRGB(240,240,240); NameLabel.BackgroundTransparency = 1
+    NameLabel.Size = UDim2.new(0,130,1,0); NameLabel.Position = UDim2.new(0,14,0,0)
+    NameLabel.TextXAlignment = Enum.TextXAlignment.Left; NameLabel.ZIndex = 2; NameLabel.Parent = Frame
+
+    local feat = {frame = Frame, type = type, key = name}
+
+    if type == "Toggle" then
+        local ToggleBtn = Instance.new("TextButton"); ToggleBtn.Text = T("off")
+        ToggleBtn.Font = Enum.Font.GothamBold; ToggleBtn.TextSize = 13
+        ToggleBtn.TextColor3 = Color3.fromRGB(255,255,255); ToggleBtn.BackgroundColor3 = Color3.fromRGB(60,60,60)
+        ToggleBtn.Size = UDim2.new(0,60,0,30); ToggleBtn.Position = UDim2.new(1,-75,0.5,-15)
+        ToggleBtn.BorderSizePixel = 0; ToggleBtn.AutoButtonColor = false; ToggleBtn.ZIndex = 2; ToggleBtn.Parent = Frame
+        local ToggleCorner = Instance.new("UICorner"); ToggleCorner.CornerRadius = UDim.new(0,15); ToggleCorner.Parent = ToggleBtn
+        local state = false
+        ToggleBtn.MouseButton1Click:Connect(function()
+            state = not state; ToggleBtn.Text = state and T("on") or T("off")
+            tween(ToggleBtn, {BackgroundColor3 = state and Color3.fromRGB(29,155,240) or Color3.fromRGB(60,60,60)}, 0.2)
+            if opt.onToggle then opt.onToggle(state) end
+            notif(T(name) .. ": " .. (state and T("on") or T("off")))
+        end)
+        feat.toggle = ToggleBtn
+        feat.getState = function() return state end
+        feat.setState = function(s)
+            state = s
+            ToggleBtn.Text = state and T("on") or T("off")
+            tween(ToggleBtn, {BackgroundColor3 = state and Color3.fromRGB(29,155,240) or Color3.fromRGB(60,60,60)}, 0.2)
+            if opt.onToggle then opt.onToggle(state) end
+        end
+
+    elseif type == "Slider" then
+        local ValLabel = Instance.new("TextLabel"); ValLabel.Text = tostring(opt.default or 16)
+        ValLabel.Font = Enum.Font.GothamMedium; ValLabel.TextSize = 14
+        ValLabel.TextColor3 = Color3.fromRGB(200,200,200); ValLabel.BackgroundTransparency = 1
+        ValLabel.Size = UDim2.new(0,40,1,0); ValLabel.Position = UDim2.new(1,-50,0,0); ValLabel.ZIndex = 2; ValLabel.Parent = Frame
+
+        local Track = Instance.new("Frame"); Track.Size = UDim2.new(0,120,0,6); Track.Position = UDim2.new(1,-185,0.5,-3)
+        Track.BackgroundColor3 = Color3.fromRGB(50,50,50); Track.BorderSizePixel = 0; Track.ZIndex = 2; Track.Parent = Frame
+        local TrackCorner = Instance.new("UICorner"); TrackCorner.CornerRadius = UDim.new(0,3); TrackCorner.Parent = Track
+
+        local Fill = Instance.new("Frame")
+        local ratio = (opt.default-(opt.min or 1))/((opt.max or 100)-(opt.min or 1))
+        Fill.Size = UDim2.new(ratio,0,1,0); Fill.BackgroundColor3 = Color3.fromRGB(29,155,240)
+        Fill.BorderSizePixel = 0; Fill.ZIndex = 2; Fill.Parent = Track
+        local FillCorner = Instance.new("UICorner"); FillCorner.CornerRadius = UDim.new(0,3); FillCorner.Parent = Fill
+
+        local Knob = Instance.new("TextButton"); Knob.Size = UDim2.new(0,18,0,18)
+        Knob.Position = UDim2.new(ratio,-9,0.5,-9); Knob.BackgroundColor3 = Color3.fromRGB(255,255,255)
+        Knob.Text = ""; Knob.BorderSizePixel = 0; Knob.AutoButtonColor = false; Knob.ZIndex = 3; Knob.Parent = Track
+        local KnobCorner = Instance.new("UICorner"); KnobCorner.CornerRadius = UDim.new(0,9); KnobCorner.Parent = Knob
+
+        local val = opt.default; local min, max = opt.min or 1, opt.max or 100; local dragging = false
+        local function update(pos)
+            local rel = math.clamp((pos.X-Track.AbsolutePosition.X)/Track.AbsoluteSize.X,0,1)
+            val = math.floor(min+rel*(max-min)+0.5); ValLabel.Text = tostring(val)
+            Fill.Size = UDim2.new(rel,0,1,0); Knob.Position = UDim2.new(rel,-9,0.5,-9)
+            if opt.onChange then opt.onChange(val) end
+        end
+        Knob.MouseButton1Down:Connect(function() dragging = true end)
+        Track.InputBegan:Connect(function(inp)
+            if inp.UserInputType == Enum.UserInputType.MouseButton1 or inp.UserInputType == Enum.UserInputType.Touch then
+                dragging = true; update(inp.Position)
+            end
+        end)
+        UserInputService.InputEnded:Connect(function(inp)
+            if inp.UserInputType == Enum.UserInputType.MouseButton1 or inp.UserInputType == Enum.UserInputType.Touch then dragging = false end
+        end)
+        UserInputService.InputChanged:Connect(function(inp)
+            if dragging and (inp.UserInputType == Enum.UserInputType.MouseMovement or inp.UserInputType == Enum.UserInputType.Touch) then update(inp.Position) end
+        end)
+        feat.getValue = function() return val end
+        feat.setValue = function(v)
+            val = math.clamp(v, min, max)
+            local r = (val-min)/(max-min)
+            ValLabel.Text = tostring(val)
+            Fill.Size = UDim2.new(r,0,1,0)
+            Knob.Position = UDim2.new(r,-9,0.5,-9)
+            if opt.onChange then opt.onChange(val) end
+        end
+
+    elseif type == "Button" then
+        local Btn = Instance.new("TextButton"); Btn.Text = opt.text or T("execute")
+        Btn.Font = Enum.Font.GothamBold; Btn.TextSize = 14; Btn.TextColor3 = Color3.fromRGB(255,255,255)
+        Btn.BackgroundColor3 = Color3.fromRGB(29,155,240); Btn.Size = UDim2.new(0,80,0,32)
+        Btn.Position = UDim2.new(1,-95,0.5,-16); Btn.BorderSizePixel = 0; Btn.AutoButtonColor = false; Btn.ZIndex = 2; Btn.Parent = Frame
+        local BtnCorner = Instance.new("UICorner"); BtnCorner.CornerRadius = UDim.new(0,16); BtnCorner.Parent = Btn
+        Btn.MouseButton1Click:Connect(function()
+            tween(Btn, {BackgroundColor3 = Color3.fromRGB(18,120,200)}, 0.1)
+            task.wait(0.1); tween(Btn, {BackgroundColor3 = Color3.fromRGB(29,155,240)}, 0.1)
+            if opt.onClick then opt.onClick() end; notif(T(name).." "..T("executed"))
+        end)
+    end
+    table.insert(allFeatures, feat); container.CanvasSize = UDim2.new(0,0,0, list.AbsoluteContentSize.Y+32)
+    return feat
+end
+
+-- ==================== FLIGHT SYSTEM ====================
+local flyState = {
+    enabled = false,
+    speed = 50,
+    bodyGyro = nil,
+    bodyVelocity = nil,
+    renderConn = nil,
+    touchConn = nil,
+    touchStart = nil,
+    cameraAngleX = 0,
+    cameraAngleY = 0,
+}
+
+local function startFlight()
+    local hrp = getHRP()
+    if not hrp then return end
+
+    -- 清理旧的飞行实例
+    if flyState.bodyGyro and flyState.bodyGyro.Parent then flyState.bodyGyro:Destroy() end
+    if flyState.bodyVelocity and flyState.bodyVelocity.Parent then flyState.bodyVelocity:Destroy() end
+    if flyState.renderConn then pcall(function() flyState.renderConn:Disconnect() end) end
+    if flyState.touchConn then pcall(function() flyState.touchConn:Disconnect() end) end
+
+    local bg = Instance.new("BodyGyro"); bg.P = 9e4; bg.maxTorque = Vector3.new(9e9,9e9,9e9)
+    bg.CFrame = Camera.CFrame; bg.Parent = hrp; flyState.bodyGyro = bg
+    local bv = Instance.new("BodyVelocity"); bv.MaxForce = Vector3.new(9e9,9e9,9e9)
+    bv.Velocity = Vector3.new(0,0,0); bv.Parent = hrp; flyState.bodyVelocity = bv
+
+    local lookVector = Camera.CFrame.LookVector
+    flyState.cameraAngleX = math.atan2(lookVector.X, lookVector.Z)
+    flyState.cameraAngleY = math.asin(math.clamp(lookVector.Y, -1, 1))
+
+    flyState.renderConn = RunService.RenderStepped:Connect(function()
+        if not flyState.enabled then return end
+        local currentHrp = getHRP()
+        if not currentHrp then return end
+        if not flyState.bodyGyro or not flyState.bodyGyro.Parent then return end
+        if not flyState.bodyVelocity or not flyState.bodyVelocity.Parent then return end
+
+        local cameraCFrame = CFrame.new(Vector3.new(), Vector3.new(
+            math.cos(flyState.cameraAngleY)*math.cos(flyState.cameraAngleX),
+            math.sin(flyState.cameraAngleY),
+            math.cos(flyState.cameraAngleY)*math.sin(flyState.cameraAngleX)))
+        flyState.bodyGyro.CFrame = cameraCFrame + currentHrp.Position
+
+        local moveDir = Vector3.new()
+        if UserInputService:IsKeyDown(Enum.KeyCode.W) then moveDir += cameraCFrame.LookVector end
+        if UserInputService:IsKeyDown(Enum.KeyCode.S) then moveDir -= cameraCFrame.LookVector end
+        if UserInputService:IsKeyDown(Enum.KeyCode.A) then moveDir -= cameraCFrame.RightVector end
+        if UserInputService:IsKeyDown(Enum.KeyCode.D) then moveDir += cameraCFrame.RightVector end
+        if UserInputService:IsKeyDown(Enum.KeyCode.Q) then moveDir += Vector3.new(0,1,0) end
+        if UserInputService:IsKeyDown(Enum.KeyCode.E) then moveDir -= Vector3.new(0,1,0) end
+
+        if moveDir.Magnitude > 0 then
+            flyState.bodyVelocity.Velocity = moveDir.Unit * flyState.speed
+        else
+            flyState.bodyVelocity.Velocity = Vector3.new(0,0,0)
+        end
+    end)
+
+    flyState.touchStart = nil
+    flyState.touchConn = UserInputService.TouchMoved:Connect(function(touch, processed)
+        if not flyState.enabled then return end
+        if not flyState.touchStart then flyState.touchStart = touch.Position; return end
+        local delta = touch.Position - flyState.touchStart; local sensitivity = 0.005
+        flyState.cameraAngleX = flyState.cameraAngleX - delta.X*sensitivity
+        flyState.cameraAngleY = math.clamp(flyState.cameraAngleY - delta.Y*sensitivity, -math.pi/2+0.1, math.pi/2-0.1)
+        flyState.touchStart = touch.Position
+    end)
+end
+
+local function stopFlight()
+    flyState.enabled = false
+    if flyState.renderConn then pcall(function() flyState.renderConn:Disconnect() end); flyState.renderConn = nil end
+    if flyState.touchConn then pcall(function() flyState.touchConn:Disconnect() end); flyState.touchConn = nil end
+    if flyState.bodyGyro and flyState.bodyGyro.Parent then flyState.bodyGyro:Destroy() end
+    if flyState.bodyVelocity and flyState.bodyVelocity.Parent then flyState.bodyVelocity:Destroy() end
+    flyState.bodyGyro = nil; flyState.bodyVelocity = nil; flyState.touchStart = nil
+end
+
+-- ==================== FEATURE STATE VARIABLES ====================
+-- 在功能注册前定义所有状态变量，避免引用未定义变量
+local tpEnabled = false
+local speedFeature, jumpFeature, flyFeature, flySpeedFeature
+local noclipFeature, infjumpFeature, teleportFeature
+local fullbrightFeature, espFeature, godFeature, nofallFeature
+local timeFeature, gravityFeature, invisibleFeature, fovFeature
+
+-- 保存原始值用于恢复
+local savedLighting = {
+    Brightness = Lighting.Brightness,
+    GlobalShadows = Lighting.GlobalShadows,
+    OutdoorAmbient = Lighting.OutdoorAmbient,
+    ClockTime = Lighting.ClockTime,
+}
+local savedGravity = Workspace.Gravity
+local savedFOV = Camera.FieldOfView
+
+-- noclip: 保存原始 CanCollide 值
+local noclipSavedCollisions = {}
+
+-- invisible: 保存原始透明度
+local invisibleSavedTransparency = {}
+
+-- ==================== FEATURES ====================
+
+-- === Speed ===
+createFeatureState("speed")
+speedFeature = CreateFeature("speed", "Slider", "movement", {default=16, min=16, max=200, onChange=function(v)
+    local hum = getHumanoid()
+    if hum then
+        hum.WalkSpeed = v
+    end
+end})
+
+-- === Jump ===
+createFeatureState("jump")
+jumpFeature = CreateFeature("jump", "Slider", "movement", {default=50, min=50, max=300, onChange=function(v)
+    local hum = getHumanoid()
+    if hum then hum.JumpPower = v end
+end})
+
+-- === Fly ===
+createFeatureState("fly")
+flyFeature = CreateFeature("fly", "Toggle", "movement", {onToggle=function(state)
+    flyState.enabled = state
+    if state then
+        startFlight()
+        FlyHelp.Text = T("flyControls")
+    else
+        stopFlight()
+        FlyHelp.Text = ""
+    end
+end})
+
+-- === Fly Speed ===
+flySpeedFeature = CreateFeature("flySpeed", "Slider", "movement", {default=50, min=10, max=200, onChange=function(v)
+    flyState.speed = v
+end})
+
+-- === NoClip ===
+createFeatureState("noclip")
+noclipFeature = CreateFeature("noclip", "Toggle", "movement", {onToggle=function(state)
+    local fs = featureStates.noclip
+    if state then
+        -- 保存原始碰撞状态
+        noclipSavedCollisions = {}
+        local ch = getCharacter()
+        if ch then
+            for _, p in ipairs(ch:GetDescendants()) do
+                if p:IsA("BasePart") then
+                    noclipSavedCollisions[p] = p.CanCollide
+                end
+            end
+        end
+        -- 使用 Stepped 每帧禁用碰撞
+        local conn = RunService.Stepped:Connect(function()
+            if not fs.enabled then return end
+            local currentCh = getCharacter()
+            if currentCh then
+                for _, p in ipairs(currentCh:GetDescendants()) do
+                    if p:IsA("BasePart") then
+                        p.CanCollide = false
+                    end
+                end
+            end
+        end)
+        addConnection("noclip", conn)
+        fs.enabled = true
+    else
+        cleanupFeature("noclip")
+        -- 恢复原始碰撞状态
+        local ch = getCharacter()
+        if ch then
+            for _, p in ipairs(ch:GetDescendants()) do
+                if p:IsA("BasePart") and noclipSavedCollisions[p] ~= nil then
+                    p.CanCollide = noclipSavedCollisions[p]
+                end
+            end
+        end
+        noclipSavedCollisions = {}
+    end
+end})
+
+-- === Infinite Jump ===
+createFeatureState("infjump")
+infjumpFeature = CreateFeature("infjump", "Toggle", "movement", {onToggle=function(state)
+    local fs = featureStates.infjump
+    if state then
+        local conn = UserInputService.JumpRequest:Connect(function()
+            local hum = getHumanoid()
+            if hum then
+                hum:ChangeState(Enum.HumanoidStateType.Jumping)
+            end
+        end)
+        addConnection("infjump", conn)
+        fs.enabled = true
+    else
+        cleanupFeature("infjump")
+    end
+end})
+
+-- === Click Teleport ===
+createFeatureState("teleport")
+teleportFeature = CreateFeature("teleport", "Toggle", "movement", {onToggle=function(state)
+    tpEnabled = state
+    featureStates.teleport.enabled = state
+end})
+
+-- === Fullbright ===
+createFeatureState("fullbright")
+fullbrightFeature = CreateFeature("fullbright", "Toggle", "combat", {onToggle=function(state)
+    if state then
+        -- 保存当前值
+        savedLighting.Brightness = Lighting.Brightness
+        savedLighting.GlobalShadows = Lighting.GlobalShadows
+        savedLighting.OutdoorAmbient = Lighting.OutdoorAmbient
+        -- 应用全亮
+        Lighting.Brightness = 3
+        Lighting.GlobalShadows = false
+        Lighting.OutdoorAmbient = Color3.fromRGB(128,128,128)
+        featureStates.fullbright.enabled = true
+    else
+        -- 恢复原始值
+        Lighting.Brightness = savedLighting.Brightness
+        Lighting.GlobalShadows = savedLighting.GlobalShadows
+        Lighting.OutdoorAmbient = savedLighting.OutdoorAmbient
+        featureStates.fullbright.enabled = false
+    end
+end})
+
+-- === ESP ===
+createFeatureState("esp")
+local espHighlights = {}
+local espLabels = {}
+
+local function createESPForPlayer(plr)
+    if plr == player then return end
+    if espHighlights[plr] then return end
+
+    local function applyESP(char)
+        if not char then return end
+        -- 清理旧的
+        if espHighlights[plr] then pcall(function() espHighlights[plr]:Destroy() end) end
+        if espLabels[plr] then pcall(function() espLabels[plr]:Destroy() end) end
+
+        local hrp = char:FindFirstChild("HumanoidRootPart")
+        local head = char:FindFirstChild("Head")
+        if not hrp then return end
+
+        -- 高亮
+        local hl = Instance.new("Highlight")
+        hl.Name = "ESPHighlight"
+        hl.FillColor = Color3.fromRGB(255,50,50)
+        hl.FillTransparency = 0.5
+        hl.OutlineColor = Color3.fromRGB(255,255,255)
+        hl.OutlineTransparency = 0
+        hl.Adornee = char
+        hl.Parent = char
+        espHighlights[plr] = hl
+
+        -- 名称+距离标签
+        local billboard = Instance.new("BillboardGui")
+        billboard.Name = "ESPLabel"
+        billboard.Size = UDim2.new(0, 200, 0, 40)
+        billboard.StudsOffset = Vector3.new(0, 3, 0)
+        billboard.AlwaysOnTop = true
+        billboard.MaxDistance = 500
+        billboard.Adornee = head or hrp
+        billboard.Parent = char
+
+        local nameLabel = Instance.new("TextLabel")
+        nameLabel.Size = UDim2.new(1, 0, 0.5, 0)
+        nameLabel.BackgroundTransparency = 1
+        nameLabel.TextColor3 = Color3.fromRGB(255,255,255)
+        nameLabel.TextStrokeColor3 = Color3.fromRGB(0,0,0)
+        nameLabel.TextStrokeTransparency = 0
+        nameLabel.Font = Enum.Font.GothamBold
+        nameLabel.TextSize = 13
+        nameLabel.Text = plr.Name
+        nameLabel.Parent = billboard
+
+        local distLabel = Instance.new("TextLabel")
+        distLabel.Size = UDim2.new(1, 0, 0.5, 0)
+        distLabel.Position = UDim2.new(0, 0, 0.5, 0)
+        distLabel.BackgroundTransparency = 1
+        distLabel.TextColor3 = Color3.fromRGB(200,200,200)
+        distLabel.TextStrokeColor3 = Color3.fromRGB(0,0,0)
+        distLabel.TextStrokeTransparency = 0
+        distLabel.Font = Enum.Font.GothamMedium
+        distLabel.TextSize = 11
+        distLabel.Text = ""
+        distLabel.Parent = billboard
+
+        espLabels[plr] = {billboard = billboard, distLabel = distLabel}
+    end
+
+    if plr.Character then applyESP(plr.Character) end
+    -- 监听角色加载
+    local charConn = plr.CharacterAdded:Connect(function(char)
+        task.wait(1) -- 等待角色完全加载
+        if featureStates.esp.enabled then applyESP(char) end
+    end)
+    addConnection("esp", charConn)
+end
+
+local function removeESPForPlayer(plr)
+    if espHighlights[plr] then pcall(function() espHighlights[plr]:Destroy() end); espHighlights[plr] = nil end
+    if espLabels[plr] then
+        pcall(function() espLabels[plr].billboard:Destroy() end)
+        espLabels[plr] = nil
+    end
+    -- 清理角色上的残留
+    if plr.Character then
+        local old = plr.Character:FindFirstChild("ESPHighlight")
+        if old then pcall(function() old:Destroy() end) end
+        local oldLabel = plr.Character:FindFirstChild("ESPLabel")
+        if oldLabel then pcall(function() oldLabel:Destroy() end) end
+    end
+end
+
+espFeature = CreateFeature("esp", "Toggle", "combat", {onToggle=function(state)
+    local fs = featureStates.esp
+    if state then
+        fs.enabled = true
+        -- 为所有现有玩家创建 ESP
+        for _, plr in ipairs(Players:GetPlayers()) do
+            createESPForPlayer(plr)
+        end
+        -- 监听新玩家加入
+        local playerAddedConn = Players.PlayerAdded:Connect(function(plr)
+            if fs.enabled then createESPForPlayer(plr) end
+        end)
+        addConnection("esp", playerAddedConn)
+        -- 监听玩家离开
+        local playerRemovingConn = Players.PlayerRemoving:Connect(function(plr)
+            removeESPForPlayer(plr)
+        end)
+        addConnection("esp", playerRemovingConn)
+        -- 更新距离标签
+        local distConn = RunService.RenderStepped:Connect(function()
+            if not fs.enabled then return end
+            local myHrp = getHRP()
+            for plr, data in pairs(espLabels) do
+                if plr.Character and plr.Character:FindFirstChild("HumanoidRootPart") and myHrp then
+                    local dist = (plr.Character.HumanoidRootPart.Position - myHrp.Position).Magnitude
+                    if data.distLabel and data.distLabel.Parent then
+                        data.distLabel.Text = string.format("%d m", math.floor(dist))
+                    end
+                end
+            end
+        end)
+        addConnection("esp", distConn)
+    else
+        fs.enabled = false
+        -- 清理所有 ESP
+        for _, plr in ipairs(Players:GetPlayers()) do
+            removeESPForPlayer(plr)
+        end
+        cleanupFeature("esp")
+    end
+end})
+
+-- === God Mode ===
+createFeatureState("god")
+godFeature = CreateFeature("god", "Toggle", "combat", {onToggle=function(state)
+    local fs = featureStates.god
+    if state then
+        fs.enabled = true
+        -- 方式1: 持续恢复生命值
+        local healthConn = nil
+        local function setupGodMode()
+            local hum = getHumanoid()
+            if not hum then return end
+            -- 立即回满血
+            hum.Health = hum.MaxHealth
+            if healthConn then pcall(function() healthConn:Disconnect() end) end
+            healthConn = hum.HealthChanged:Connect(function(health)
+                if fs.enabled and health < hum.MaxHealth then
+                    hum.Health = hum.MaxHealth
+                end
+            end)
+        end
+        setupGodMode()
+        if healthConn then addConnection("god", healthConn) end
+        -- 角色重生后重新设置
+        local respawnConn = player.CharacterAdded:Connect(function(ch)
+            task.wait(1)
+            if fs.enabled then
+                local hum = ch:FindFirstChildOfClass("Humanoid")
+                if hum then
+                    hum.Health = hum.MaxHealth
+                    if healthConn then pcall(function() healthConn:Disconnect() end) end
+                    healthConn = hum.HealthChanged:Connect(function(health)
+                        if fs.enabled and health < hum.MaxHealth then
+                            hum.Health = hum.MaxHealth
+                        end
+                    end)
+                end
+            end
+        end)
+        addConnection("god", respawnConn)
+    else
+        fs.enabled = false
+        cleanupFeature("god")
+    end
+end})
+
+-- === No Fall Damage ===
+createFeatureState("nofall")
+nofallFeature = CreateFeature("nofall", "Toggle", "combat", {onToggle=function(state)
+    local fs = featureStates.nofall
+    if state then
+        fs.enabled = true
+        local function disableFall()
+            local hum = getHumanoid()
+            if hum then
+                hum:SetStateEnabled(Enum.HumanoidStateType.FallingDown, false)
+                hum:SetStateEnabled(Enum.HumanoidStateType.Freefall, false)
+            end
+        end
+        disableFall()
+        -- 角色重生后重新设置
+        local respawnConn = player.CharacterAdded:Connect(function(ch)
+            task.wait(0.5)
+            if fs.enabled then
+                local hum = ch:FindFirstChildOfClass("Humanoid")
+                if hum then
+                    hum:SetStateEnabled(Enum.HumanoidStateType.FallingDown, false)
+                    hum:SetStateEnabled(Enum.HumanoidStateType.Freefall, false)
+                end
+            end
+        end)
+        addConnection("nofall", respawnConn)
+    else
+        fs.enabled = false
+        -- 恢复状态
+        local hum = getHumanoid()
+        if hum then
+            hum:SetStateEnabled(Enum.HumanoidStateType.FallingDown, true)
+            hum:SetStateEnabled(Enum.HumanoidStateType.Freefall, true)
+        end
+        cleanupFeature("nofall")
+    end
+end})
+
+-- === Time Control ===
+createFeatureState("time")
+timeFeature = CreateFeature("time", "Slider", "world", {default=12, min=0, max=24, onChange=function(v)
+    Lighting.ClockTime = v
+end})
+
+-- === Gravity ===
+createFeatureState("gravity")
+gravityFeature = CreateFeature("gravity", "Slider", "world", {default=196.2, min=10, max=500, onChange=function(v)
+    Workspace.Gravity = v
+end})
+
+-- === Invisible ===
+createFeatureState("invisible")
+invisibleFeature = CreateFeature("invisible", "Toggle", "world", {onToggle=function(state)
+    local fs = featureStates.invisible
+    if state then
+        fs.enabled = true
+        invisibleSavedTransparency = {}
+        local ch = getCharacter()
+        if ch then
+            for _, p in ipairs(ch:GetDescendants()) do
+                if p:IsA("BasePart") then
+                    invisibleSavedTransparency[p] = p.Transparency
+                    p.Transparency = 0.8
+                elseif p:IsA("Decal") then
+                    invisibleSavedTransparency[p] = p.Transparency
+                    p.Transparency = 1
+                end
+            end
+        end
+        -- 角色重生后重新设置
+        local respawnConn = player.CharacterAdded:Connect(function(ch)
+            task.wait(0.5)
+            if fs.enabled then
+                invisibleSavedTransparency = {}
+                for _, p in ipairs(ch:GetDescendants()) do
+                    if p:IsA("BasePart") then
+                        invisibleSavedTransparency[p] = p.Transparency
+                        p.Transparency = 0.8
+                    elseif p:IsA("Decal") then
+                        invisibleSavedTransparency[p] = p.Transparency
+                        p.Transparency = 1
+                    end
+                end
+            end
+        end)
+        addConnection("invisible", respawnConn)
+    else
+        fs.enabled = false
+        -- 恢复原始透明度
+        local ch = getCharacter()
+        if ch then
+            for _, p in ipairs(ch:GetDescendants()) do
+                if (p:IsA("BasePart") or p:IsA("Decal")) and invisibleSavedTransparency[p] ~= nil then
+                    p.Transparency = invisibleSavedTransparency[p]
+                end
+            end
+        end
+        invisibleSavedTransparency = {}
+        cleanupFeature("invisible")
+    end
+end})
+
+-- === FOV ===
+createFeatureState("fov")
+fovFeature = CreateFeature("fov", "Slider", "world", {default=70, min=30, max=120, onChange=function(v)
+    Camera.FieldOfView = v
+end})
+
+-- ==================== Teleport Input ====================
+UserInputService.InputBegan:Connect(function(inp, gp)
+    if gp or not active or not tpEnabled then return end
+    if inp.UserInputType == Enum.UserInputType.MouseButton1 or inp.UserInputType == Enum.UserInputType.Touch then
+        local pos = inp.Position; local ray = Camera:ViewportPointToRay(pos.X, pos.Y)
+        local params = RaycastParams.new(); params.FilterType = Enum.RaycastFilterType.Blacklist
+        local ch = getCharacter()
+        params.FilterDescendantsInstances = ch and {ch} or {}
+        local res = Workspace:Raycast(ray.Origin, ray.Direction*1000, params)
+        if res then
+            local hrp = getHRP()
+            if hrp then
+                hrp.CFrame = CFrame.new(res.Position + Vector3.new(0,3,0))
+                notif(T("teleported"))
+            end
+        end
+    end
+end)
+
+-- ==================== WINDOW CONTROL ====================
+local function minimize()
+    disableBlur()
+    local targetPos = FloatIcon.AbsolutePosition
+    tween(MainFrame, {Size=UDim2.new(0,0,0,0), Position=UDim2.new(0,targetPos.X,0,targetPos.Y)}, 0.3, Enum.EasingStyle.Back)
+    task.delay(0.3, function() MainFrame.Visible=false; MainFrame.Size=UDim2.new(0,720,0,420); MainFrame.Position=UDim2.new(0.5,-360,0.5,-210) end)
+    FloatIcon.Visible=true; FloatIcon.Size=UDim2.new(0,0,0,0)
+    tween(FloatIcon, {Size=UDim2.new(0,52,0,52)}, 0.3, Enum.EasingStyle.Back)
+end
+local function restore()
+    FloatIcon.Visible=false; enableBlur(); MainFrame.Visible=true
+    MainFrame.Size=UDim2.new(0,0,0,0); MainFrame.Position=UDim2.new(0.5,0,0.5,0)
+    tween(MainFrame, {Size=UDim2.new(0,720,0,420), Position=UDim2.new(0.5,-360,0.5,-210)}, 0.35, Enum.EasingStyle.Back)
+end
+MinBtn.MouseButton1Click:Connect(minimize); CloseBtn.MouseButton1Click:Connect(minimize)
+FloatIcon.MouseButton1Click:Connect(function() if active then restore() end end)
+
+-- Drag
+local drag=false; local dragStart, startPos
+TopBar.InputBegan:Connect(function(inp) if inp.UserInputType==Enum.UserInputType.MouseButton1 or inp.UserInputType==Enum.UserInputType.Touch then drag=true; dragStart=inp.Position; startPos=MainFrame.Position end end)
+UserInputService.InputChanged:Connect(function(inp) if drag and (inp.UserInputType==Enum.UserInputType.MouseMovement or inp.UserInputType==Enum.UserInputType.Touch) then local delta=inp.Position-dragStart; MainFrame.Position=UDim2.new(startPos.X.Scale,startPos.X.Offset+delta.X,startPos.Y.Scale,startPos.Y.Offset+delta.Y) end end)
+UserInputService.InputEnded:Connect(function(inp) if inp.UserInputType==Enum.UserInputType.MouseButton1 or inp.UserInputType==Enum.UserInputType.Touch then drag=false end end)
+
+-- ==================== Language ====================
+local function refreshLang()
+    KeyTitle.Text=T("enterKey"); ActBtn.Text=T("activate"); LangBtn.Text=T("langSwitch")
+    for tn,btn in pairs(tabBtns) do btn.Text=T(tn) end
+    for _,feat in ipairs(allFeatures) do
+        local lbl = feat.frame:FindFirstChildWhichIsA("TextLabel")
+        if lbl then lbl.Text=T(feat.key) end
+        if feat.type=="Toggle" and feat.toggle then
+            feat.toggle.Text = feat.getState() and T("on") or T("off")
+        end
+    end
+    if flyState.enabled then FlyHelp.Text=T("flyControls") end
+end
+LangBtn.MouseButton1Click:Connect(function() Lang=Lang=="zh" and "en" or "zh"; refreshLang() end)
+
+-- ==================== Activation ====================
+ActBtn.MouseButton1Click:Connect(function()
+    if KeyBox.Text==KEY then active=true; notif(T("activated"))
+        tween(ActFrame, {BackgroundTransparency=1}, 0.3)
+        task.delay(0.3, function() ActFrame.Visible=false; FloatIcon.Visible=true; FloatIcon.Size=UDim2.new(0,0,0,0); tween(FloatIcon, {Size=UDim2.new(0,52,0,52)}, 0.4, Enum.EasingStyle.Back) end)
+    else StatusLabel.Text=T("invalidKey"); local ox=ActFrame.Position.X.Offset
+        for _=1,3 do tween(ActFrame, {Position=UDim2.new(0.5,ox-6,0.5,-120)}, 0.05); task.wait(0.05); tween(ActFrame, {Position=UDim2.new(0.5,ox+6,0.5,-120)}, 0.05); task.wait(0.05) end
+        tween(ActFrame, {Position=UDim2.new(0.5,ox,0.5,-120)}, 0.1); task.delay(2,function() StatusLabel.Text="" end)
+    end
+end)
+
+-- ==================== Hotkey ====================
+UserInputService.InputBegan:Connect(function(inp,gp)
+    if gp then return end
+    if inp.KeyCode==Enum.KeyCode.RightControl and active then
+        if MainFrame.Visible then minimize() else restore() end
+    end
+end)
+
+-- ==================== Character Respawn Handler ====================
+player.CharacterAdded:Connect(function(ch)
+    character = ch
+    humanoid = ch:WaitForChild("Humanoid")
+
+    -- 重新应用激活的功能
+    task.wait(1) -- 等待角色完全加载
+
+    -- 速度
+    if speedFeature and speedFeature.getValue then
+        local spd = speedFeature.getValue()
+        if spd and spd > 16 then
+            local hum = getHumanoid()
+            if hum then hum.WalkSpeed = spd end
+        end
+    end
+
+    -- 跳跃
+    if jumpFeature and jumpFeature.getValue then
+        local jp = jumpFeature.getValue()
+        if jp and jp > 50 then
+            local hum = getHumanoid()
+            if hum then hum.JumpPower = jp end
+        end
+    end
+
+    -- 飞行
+    if flyState.enabled then
+        stopFlight()
+        flyState.enabled = true
+        startFlight()
+    end
+
+    -- 无敌
+    if featureStates.god and featureStates.god.enabled then
+        local hum = getHumanoid()
+        if hum then
+            hum.Health = hum.MaxHealth
+        end
+    end
+
+    -- 无跌落伤害
+    if featureStates.nofall and featureStates.nofall.enabled then
+        local hum = getHumanoid()
+        if hum then
+            hum:SetStateEnabled(Enum.HumanoidStateType.FallingDown, false)
+            hum:SetStateEnabled(Enum.HumanoidStateType.Freefall, false)
+        end
+    end
+end)
+
+-- ==================== Init ====================
+switchTab("movement")
+print("[DevTool] XA Dev Backdoor v5.0 | Improved & Optimized | Key: xa3765360431")
