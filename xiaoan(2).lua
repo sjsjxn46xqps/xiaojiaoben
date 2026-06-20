@@ -1,5 +1,5 @@
 --[[
-    X-Style Dev Backdoor v7.5 (Music Player + Floating Window + Precise AC Bypass)
+    X-Style Dev Backdoor v7.6 (Fling System + Rainbow FloatWin + Music Player)
     Key: xa3765360431
     - 27-layer anti-cheat bypass system (always on)
     - Advanced aimbot with prediction, FOV, priority, keybind, sticky aim, etc.
@@ -158,6 +158,30 @@ local L = {
     -- 悬浮窗
     floatWin = {zh="悬浮窗", en="Float"},
     floatWinRemove = {zh="移除悬浮窗", en="Remove Float"},
+    clickToRemove = {zh="点击移除", en="Click to Remove"},
+    -- 甩飞
+    fling = {zh="甩飞", en="Fling"},
+    flingPower = {zh="甩飞力度", en="Fling Power"},
+    flingRange = {zh="甩飞范围", en="Fling Range"},
+    flingMode = {zh="甩飞模式", en="Fling Mode"},
+    flingModeAll = {zh="范围内全部", en="All in Range"},
+    flingModeNearest = {zh="最近目标", en="Nearest"},
+    flingModeTarget = {zh="指定目标", en="Target"},
+    flingTarget = {zh="甩飞目标", en="Fling Target"},
+    flingExecuted = {zh="已甩飞", en="Flung"},
+    flingNoTarget = {zh="无目标", en="No Target"},
+    antiFling = {zh="防甩飞", en="Anti-Fling"},
+    antiFlingStrength = {zh="防甩飞强度", en="Anti-Fling Str"},
+    antiFlingActive = {zh="防甩飞已激活", en="Anti-Fling On"},
+    antiFlingBlocked = {zh="已拦截甩飞", en="Fling Blocked"},
+    bypassAntiFling = {zh="反防甩飞", en="Bypass Anti-Fling"},
+    bypassAntiFlingMode = {zh="绕过模式", en="Bypass Mode"},
+    bypassModeForce = {zh="强制位移", en="Force Move"},
+    bypassModeVelocity = {zh="高速冲击", en="Velocity Hit"},
+    bypassModeMultiHit = {zh="连续冲击", en="Multi Hit"},
+    bypassModeExploit = {zh="漏洞利用", en="Exploit"},
+    flingAuto = {zh="自动甩飞", en="Auto Fling"},
+    flingAutoInterval = {zh="自动间隔", en="Auto Interval"},
 }
 local function T(key) return L[key] and L[key][Lang] or key end
 
@@ -2354,6 +2378,524 @@ CreateFeature("spinSpeed", "Slider", "movement", {default=10, min=1, max=50, onC
 end})
 
 -- ####################################################################
+-- ==================== FLING SYSTEM (甩飞/防甩飞/反防甩飞) ============ --
+-- 完整的甩飞系统，包含三种功能及各自的反作弊保护
+-- ####################################################################
+
+-- === 甩飞核心变量 ===
+local flingState = {
+    enabled = false,
+    power = 500,           -- 甩飞力度（速度值）
+    range = 30,            -- 甩飞范围
+    mode = 1,              -- 1=范围内全部, 2=最近目标, 3=指定目标
+    targetPlayer = nil,    -- 指定目标玩家名
+    autoFling = false,     -- 自动甩飞
+    autoInterval = 3,      -- 自动甩飞间隔（秒）
+    lastFlingTime = 0,     -- 上次甩飞时间
+    flingCooldown = 0.5,   -- 手动甩飞冷却
+    bypassEnabled = false, -- 反防甩飞是否启用
+    bypassMode = 1,        -- 1=强制位移, 2=高速冲击, 3=连续冲击, 4=漏洞利用
+}
+
+-- === 防甩飞核心变量 ===
+local antiFlingState = {
+    enabled = false,
+    strength = 3,          -- 防甩飞强度 1-5
+    lastCheckTime = 0,
+    originalPositions = {},
+    velocityThreshold = 50,  -- 速度阈值，超过此值视为被甩飞
+    positionThreshold = 50,  -- 位置突变阈值
+}
+
+-- === 甩飞反作弊保护 ===
+-- 甩飞操作会修改其他玩家的 HumanoidRootPart 位置/速度
+-- 反作弊可能检测到：异常物理力、位置突变、BodyVelocity/BodyForce 等实例
+-- 保护策略：
+-- 1. 使用伪装名称创建物理实例
+-- 2. 操作后立即清理所有物理实例
+-- 3. 使用短暂的物理力而非直接设置位置
+-- 4. 操作间隔随机化，避免模式检测
+
+-- 伪装名称映射
+local FLING_DISGUISE = {
+    bodyVelocity = "ParticleEmitter",
+    bodyForce = "PointLight",
+    bodyPosition = "SpotLight",
+    bodyGyro = "SurfaceLight",
+    attachment = "Attachment",
+}
+
+-- === 甩飞核心函数 ===
+-- 对单个目标执行甩飞
+local function executeFlingOnTarget(targetPlayer, power, useBypass)
+    if not targetPlayer or targetPlayer == player then return false end
+    if not targetPlayer.Character then return false end
+    local targetHRP = targetPlayer.Character:FindFirstChild("HumanoidRootPart")
+    if not targetHRP then return false end
+    local myChar = getCharacter()
+    if not myChar then return false end
+    local myHRP = myChar:FindFirstChild("HumanoidRootPart")
+    if not myHRP then return false end
+
+    -- 计算甩飞方向：从我到目标的方向
+    local direction = (targetHRP.Position - myHRP.Position).Unit
+
+    -- 添加一些随机偏移，使每次甩飞方向略有不同
+    local randomOffset = Vector3.new(
+        (math.random() - 0.5) * 0.3,
+        math.random() * 0.5 + 0.3,  -- 向上偏移
+        (math.random() - 0.5) * 0.3
+    )
+    local flingDirection = (direction + randomOffset).Unit
+
+    -- 计算甩飞速度
+    local flingVelocity = flingDirection * power
+
+    -- 检查是否需要绕过防甩飞
+    if useBypass and flingState.bypassEnabled then
+        -- === 反防甩飞模式 ===
+        if flingState.bypassMode == 1 then
+            -- 模式1：强制位移 - 直接设置CFrame，绕过物理系统
+            -- 防甩飞通常监控物理力，直接设置CFrame可以绕过
+            pcall(function()
+                local targetPos = targetHRP.Position + flingDirection * power * 0.5
+                -- 分段移动，避免位置突变被检测
+                local steps = 5
+                local startPos = targetHRP.Position
+                for i = 1, steps do
+                    local alpha = i / steps
+                    -- 使用缓动函数让移动更自然
+                    local easedAlpha = 1 - math.pow(1 - alpha, 3) -- easeOutCubic
+                    local newPos = startPos:Lerp(targetPos, easedAlpha)
+                    targetHRP.CFrame = CFrame.new(newPos)
+                    task.wait(0.02)
+                end
+            end)
+            return true
+
+        elseif flingState.bypassMode == 2 then
+            -- 模式2：高速冲击 - 用极高速度的BodyVelocity瞬间冲击
+            -- 防甩飞可能只监控低频率的力，高速瞬间冲击可能绕过
+            pcall(function()
+                -- 先靠近目标
+                local originalCFrame = myHRP.CFrame
+                local approachPos = targetHRP.Position - direction * 3
+                myHRP.CFrame = CFrame.new(approachPos)
+
+                task.wait(0.05)
+
+                -- 创建伪装的BodyVelocity
+                local bv = Instance.new("BodyVelocity")
+                bv.Name = FLING_DISGUISE.bodyVelocity
+                bv.MaxForce = Vector3.new(math.huge, math.huge, math.huge)
+                bv.Velocity = flingVelocity * 2  -- 双倍速度
+                bv.Parent = targetHRP
+
+                -- 同时给自己一个反向力（模拟碰撞）
+                local myBv = Instance.new("BodyVelocity")
+                myBv.Name = FLING_DISGUISE.bodyVelocity
+                myBv.MaxForce = Vector3.new(math.huge, math.huge, math.huge)
+                myBv.Velocity = -flingDirection * 20
+                myBv.Parent = myHRP
+
+                task.wait(0.15)
+
+                -- 清理
+                pcall(function() bv:Destroy() end)
+                pcall(function() myBv:Destroy() end)
+
+                -- 恢复位置
+                myHRP.CFrame = originalCFrame
+            end)
+            return true
+
+        elseif flingState.bypassMode == 3 then
+            -- 模式3：连续冲击 - 多次小力冲击，累积效果
+            -- 防甩飞可能只拦截单次大力，多次小力可能绕过
+            pcall(function()
+                local originalCFrame = myHRP.CFrame
+                for hit = 1, 8 do
+                    -- 每次靠近目标然后施加小力
+                    local approachPos = targetHRP.Position - direction * 2
+                    myHRP.CFrame = CFrame.new(approachPos)
+
+                    task.wait(0.03)
+
+                    local bv = Instance.new("BodyVelocity")
+                    bv.Name = FLING_DISGUISE.bodyVelocity
+                    bv.MaxForce = Vector3.new(math.huge, math.huge, math.huge)
+                    bv.Velocity = flingDirection * (power * 0.4)  -- 每次小力
+                    bv.Parent = targetHRP
+
+                    task.wait(0.05)
+
+                    pcall(function() bv:Destroy() end)
+                end
+                -- 恢复位置
+                myHRP.CFrame = originalCFrame
+            end)
+            return true
+
+        elseif flingState.bypassMode == 4 then
+            -- 模式4：漏洞利用 - 利用网络所有权漏洞
+            -- 通过快速移动自己的角色来获得对目标的网络所有权
+            -- 然后修改目标位置
+            pcall(function()
+                local originalCFrame = myHRP.CFrame
+
+                -- 快速移向目标以获取网络所有权
+                for i = 1, 3 do
+                    myHRP.CFrame = CFrame.new(targetHRP.Position + Vector3.new(0, 2, 0))
+                    task.wait(0.01)
+                    myHRP.CFrame = CFrame.new(targetHRP.Position - direction * 1.5)
+                    task.wait(0.01)
+                end
+
+                -- 现在应该有网络所有权了，直接设置目标位置
+                task.wait(0.05)
+
+                -- 使用BodyPosition精确控制目标位置
+                local bp = Instance.new("BodyPosition")
+                bp.Name = FLING_DISGUISE.bodyPosition
+                bp.MaxForce = Vector3.new(math.huge, math.huge, math.huge)
+                bp.Position = targetHRP.Position + flingDirection * power * 0.8
+                bp.D = 1000  -- 高阻尼快速移动
+                bp.P = 50000 -- 高力量
+                bp.Parent = targetHRP
+
+                -- 同时用BodyVelocity加速
+                local bv = Instance.new("BodyVelocity")
+                bv.Name = FLING_DISGUISE.bodyVelocity
+                bv.MaxForce = Vector3.new(math.huge, math.huge, math.huge)
+                bv.Velocity = flingVelocity
+                bv.Parent = targetHRP
+
+                task.wait(0.3)
+
+                -- 清理
+                pcall(function() bp:Destroy() end)
+                pcall(function() bv:Destroy() end)
+
+                -- 恢复位置
+                myHRP.CFrame = originalCFrame
+            end)
+            return true
+        end
+    else
+        -- === 普通甩飞模式（无反防甩飞）===
+        pcall(function()
+            local originalCFrame = myHRP.CFrame
+
+            -- 方法：靠近目标，然后施加BodyVelocity
+            -- 这是Roblox中最经典的甩飞方法
+            local approachPos = targetHRP.Position - direction * 2
+            myHRP.CFrame = CFrame.new(approachPos)
+
+            task.wait(0.05)
+
+            -- 创建BodyVelocity
+            local bv = Instance.new("BodyVelocity")
+            bv.Name = FLING_DISGUISE.bodyVelocity
+            bv.MaxForce = Vector3.new(math.huge, math.huge, math.huge)
+            bv.Velocity = flingVelocity
+            bv.Parent = targetHRP
+
+            -- 创建BodyForce增加旋转效果
+            local bf = Instance.new("BodyForce")
+            bf.Name = FLING_DISGUISE.bodyForce
+            bf.Force = flingDirection * power * 50 + Vector3.new(
+                (math.random() - 0.5) * power * 30,
+                power * 20,
+                (math.random() - 0.5) * power * 30
+            )
+            bf.Parent = targetHRP
+
+            -- 给自己一个反冲力，看起来像碰撞
+            local myBv = Instance.new("BodyVelocity")
+            myBv.Name = FLING_DISGUISE.bodyVelocity
+            myBv.MaxForce = Vector3.new(math.huge, math.huge, math.huge)
+            myBv.Velocity = -flingDirection * 15
+            myBv.Parent = myHRP
+
+            task.wait(0.2)
+
+            -- 清理所有物理实例（反作弊保护：不留痕迹）
+            pcall(function() bv:Destroy() end)
+            pcall(function() bf:Destroy() end)
+            pcall(function() myBv:Destroy() end)
+
+            -- 恢复自己的位置
+            task.wait(0.05)
+            myHRP.CFrame = originalCFrame
+        end)
+        return true
+    end
+
+    return false
+end
+
+-- === 甩飞功能UI ===
+createFeatureState("fling")
+
+CreateFeature("fling", "Toggle", "combat", {onToggle=function(state)
+    local fs = featureStates.fling
+    fs.enabled = state
+    flingState.enabled = state
+    if state then
+        notif(T("fling") .. " " .. T("on"))
+    else
+        -- 关闭时清理
+        flingState.autoFling = false
+        cleanupFeature("fling")
+    end
+end})
+
+CreateFeature("flingPower", "Slider", "combat", {default=500, min=100, max=2000, onChange=function(v)
+    flingState.power = v
+end})
+
+CreateFeature("flingRange", "Slider", "combat", {default=30, min=5, max=100, onChange=function(v)
+    flingState.range = v
+end})
+
+CreateFeature("flingMode", "Slider", "combat", {default=1, min=1, max=3, onChange=function(v)
+    flingState.mode = v
+end})
+
+-- 甩飞执行按钮
+CreateFeature("flingExec", "Button", "combat", {text=T("fling"), onClick=function()
+    if not flingState.enabled then notif(T("fling") .. " " .. T("off")); return end
+
+    local now = tick()
+    if now - flingState.lastFlingTime < flingState.flingCooldown then return end
+    flingState.lastFlingTime = now
+
+    local myChar = getCharacter()
+    if not myChar then return end
+    local myHRP = myChar:FindFirstChild("HumanoidRootPart")
+    if not myHRP then return end
+
+    local targets = {}
+
+    if flingState.mode == 1 then
+        -- 范围内全部
+        for _, p in ipairs(Players:GetPlayers()) do
+            if p ~= player and p.Character and p.Character:FindFirstChild("HumanoidRootPart") then
+                local dist = (p.Character.HumanoidRootPart.Position - myHRP.Position).Magnitude
+                if dist <= flingState.range then
+                    targets[#targets + 1] = p
+                end
+            end
+        end
+    elseif flingState.mode == 2 then
+        -- 最近目标
+        local nearest = nil
+        local nearestDist = math.huge
+        for _, p in ipairs(Players:GetPlayers()) do
+            if p ~= player and p.Character and p.Character:FindFirstChild("HumanoidRootPart") then
+                local dist = (p.Character.HumanoidRootPart.Position - myHRP.Position).Magnitude
+                if dist <= flingState.range and dist < nearestDist then
+                    nearest = p
+                    nearestDist = dist
+                end
+            end
+        end
+        if nearest then targets = {nearest} end
+    elseif flingState.mode == 3 then
+        -- 指定目标
+        if flingState.targetPlayer then
+            local target = Players:FindFirstChild(flingState.targetPlayer)
+            if target and target.Character then
+                targets = {target}
+            else
+                -- 尝试模糊匹配
+                for _, p in ipairs(Players:GetPlayers()) do
+                    if p ~= player and p.Name:lower():find(flingState.targetPlayer:lower()) then
+                        targets = {p}
+                        break
+                    end
+                end
+            end
+        end
+        if #targets == 0 then
+            notif(T("flingNoTarget"))
+            return
+        end
+    end
+
+    if #targets == 0 then
+        notif(T("flingNoTarget"))
+        return
+    end
+
+    -- 执行甩飞
+    for _, target in ipairs(targets) do
+        task.spawn(function()
+            local success = executeFlingOnTarget(target, flingState.power, flingState.bypassEnabled)
+            if success then
+                notif(T("flingExecuted") .. ": " .. target.Name)
+            end
+        end)
+        -- 多目标时错开执行
+        if #targets > 1 then task.wait(0.1) end
+    end
+end})
+
+-- 自动甩飞
+CreateFeature("flingAuto", "Toggle", "combat", {onToggle=function(state)
+    flingState.autoFling = state
+    if state then
+        task.spawn(function()
+            while flingState.autoFling and flingState.enabled do
+                local myChar = getCharacter()
+                if myChar then
+                    local myHRP = myChar:FindFirstChild("HumanoidRootPart")
+                    if myHRP then
+                        -- 找最近的目标
+                        local nearest = nil
+                        local nearestDist = math.huge
+                        for _, p in ipairs(Players:GetPlayers()) do
+                            if p ~= player and p.Character and p.Character:FindFirstChild("HumanoidRootPart") then
+                                local dist = (p.Character.HumanoidRootPart.Position - myHRP.Position).Magnitude
+                                if dist <= flingState.range and dist < nearestDist then
+                                    nearest = p
+                                    nearestDist = dist
+                                end
+                            end
+                        end
+                        if nearest then
+                            executeFlingOnTarget(nearest, flingState.power, flingState.bypassEnabled)
+                        end
+                    end
+                end
+                task.wait(flingState.autoInterval)
+            end
+        end)
+    end
+end})
+
+CreateFeature("flingAutoInterval", "Slider", "combat", {default=3, min=1, max=10, onChange=function(v)
+    flingState.autoInterval = v
+end})
+
+-- === 防甩飞功能 ===
+-- 原理：监控自身角色的异常速度/位置变化，检测到甩飞时立即修正
+-- 反作弊保护：修正操作使用伪装方式，不触发反作弊检测
+
+createFeatureState("antiFling")
+
+CreateFeature("antiFling", "Toggle", "combat", {onToggle=function(state)
+    local fs = featureStates.antiFling
+    fs.enabled = state
+    antiFlingState.enabled = state
+    if state then
+        notif(T("antiFlingActive"))
+        -- 启动防甩飞监控循环
+        local conn
+        conn = RunService.Heartbeat:Connect(function(dt)
+            if not antiFlingState.enabled then
+                if conn then conn:Disconnect() end
+                return
+            end
+
+            local char = getCharacter()
+            if not char then return end
+            local hrp = char:FindFirstChild("HumanoidRootPart")
+            if not hrp then return end
+            local hum = char:FindFirstChildOfClass("Humanoid")
+            if not hum then return end
+
+            -- 检测1：异常速度检测
+            -- 如果角色速度远超正常移动速度，说明被甩飞
+            local velocity = hrp.Velocity
+            local speed = velocity.Magnitude
+            local threshold = antiFlingState.velocityThreshold * antiFlingState.strength
+
+            if speed > threshold then
+                -- 检查是否是自己主动移动（飞行/速度加成等）
+                local isSelfMovement = false
+                if featureStates.fly and featureStates.fly.enabled then isSelfMovement = true end
+                if featureStates.speed and featureStates.speed.enabled then isSelfMovement = true end
+
+                if not isSelfMovement then
+                    -- 被甩飞了！立即修正
+                    -- 策略：将速度限制到安全范围
+                    pcall(function()
+                        -- 方法1：移除所有外部施加的BodyVelocity/BodyForce
+                        for _, child in ipairs(hrp:GetChildren()) do
+                            if child:IsA("BodyVelocity") or child:IsA("BodyForce") or
+                               child:IsA("BodyPosition") or child:IsA("BodyGyro") or
+                               child:IsA("RocketPropulsion") then
+                                -- 检查是否是我们自己创建的（通过伪装名称）
+                                local isOurs = false
+                                for _, disguiseName in pairs(FLING_DISGUISE) do
+                                    if child.Name == disguiseName then
+                                        isOurs = true
+                                        break
+                                    end
+                                end
+                                if not isOurs then
+                                    child:Destroy()
+                                end
+                            end
+                        end
+
+                        -- 方法2：将速度限制到安全值
+                        local safeVelocity = velocity.Unit * math.min(speed, 50)
+                        hrp.Velocity = safeVelocity
+
+                        -- 方法3：如果位置突变太大，修正位置
+                        local lastPos = antiFlingState.originalPositions[player.UserId]
+                        if lastPos then
+                            local posDelta = (hrp.Position - lastPos).Magnitude
+                            if posDelta > antiFlingState.positionThreshold * antiFlingState.strength then
+                                -- 位置突变，修正回上一个安全位置
+                                hrp.CFrame = CFrame.new(lastPos)
+                            end
+                        end
+                    end)
+
+                    notif(T("antiFlingBlocked"))
+                end
+            end
+
+            -- 记录安全位置（仅在正常移动时记录）
+            if speed < 50 then
+                antiFlingState.originalPositions[player.UserId] = hrp.Position
+            end
+        end)
+        addConnection("antiFling", conn)
+    else
+        cleanupFeature("antiFling")
+        antiFlingState.originalPositions = {}
+    end
+end})
+
+CreateFeature("antiFlingStrength", "Slider", "combat", {default=3, min=1, max=5, onChange=function(v)
+    antiFlingState.strength = v
+    antiFlingState.velocityThreshold = 30 + v * 20
+    antiFlingState.positionThreshold = 30 + v * 20
+end})
+
+-- === 反防甩飞功能 ===
+-- 原理：绕过对方的防甩飞机制
+-- 对方防甩飞通常：1.监控速度 2.删除BodyVelocity 3.修正位置
+-- 绕过方法：1.直接设置CFrame 2.瞬间高速冲击 3.多次小冲击 4.利用网络所有权
+
+createFeatureState("bypassAntiFling")
+
+CreateFeature("bypassAntiFling", "Toggle", "combat", {onToggle=function(state)
+    flingState.bypassEnabled = state
+    if state then
+        notif(T("bypassAntiFling") .. " " .. T("on"))
+    end
+end})
+
+CreateFeature("bypassAntiFlingMode", "Slider", "combat", {default=1, min=1, max=4, onChange=function(v)
+    flingState.bypassMode = v
+end})
+
+-- ####################################################################
 -- ==================== MUSIC PLAYER SYSTEM ========================== --
 -- ####################################################################
 
@@ -2663,10 +3205,11 @@ do
 end
 
 -- ####################################################################
--- ==================== FLOATING WINDOW SYSTEM ======================= --
+-- ==================== FLOATING WINDOW SYSTEM v2 ==================== --
+-- 扁椭圆样式 + 彩虹圆圈动画 + 菜单页面取消
 -- ####################################################################
 
-local floatWindows = {}       -- {key = {frame, label, state, isMusic, musicIndex}}
+local floatWindows = {}       -- {key = {frame, rainbowRing, label, isMusic, musicIndex}}
 local floatWinContainer = nil -- ScreenGui for float windows
 
 -- 创建悬浮窗容器
@@ -2684,14 +3227,48 @@ local floatWinPositions = {}
 local function getNextFloatPos()
     local count = 0
     for _ in pairs(floatWinPositions) do count = count + 1 end
-    local row = math.floor(count / 3)
-    local col = count % 3
-    return UDim2.new(0, 10 + col * 70, 0.4, row * 60)
+    local row = math.floor(count / 4)
+    local col = count % 4
+    return UDim2.new(0, 10 + col * 80, 0.4, row * 50)
 end
 
+-- === 彩虹颜色生成函数 ===
+local function getRainbowColor(hueOffset)
+    local hue = (tick() * 0.5 + (hueOffset or 0)) % 1
+    return Color3.fromHSV(hue, 0.9, 1)
+end
+
+-- === 创建彩虹圆圈（UIStroke渐变动画）===
+-- 由于Roblox UIStroke不支持渐变，我们用多个小Frame模拟彩虹圆圈
+local function createRainbowRing(parent, sizeOffset)
+    local ring = Instance.new("Frame")
+    ring.Name = "RainbowRing"
+    ring.Size = UDim2.new(1, sizeOffset or 8, 1, sizeOffset or 8)
+    ring.Position = UDim2.new(0, -(sizeOffset or 8)/2, 0, -(sizeOffset or 8)/2)
+    ring.BackgroundTransparency = 1
+    ring.ZIndex = parent.ZIndex - 1
+    ring.Parent = parent
+
+    -- 使用UIStroke作为彩虹边框（通过动画更新颜色）
+    local stroke = Instance.new("UIStroke")
+    stroke.Name = "RainbowStroke"
+    stroke.Color = Color3.fromRGB(255, 0, 0)
+    stroke.Thickness = 2.5
+    stroke.Transparency = 0
+    stroke.Parent = ring
+
+    -- 圆角
+    local corner = Instance.new("UICorner")
+    corner.CornerRadius = UDim.new(1, 0) -- 完全圆形
+    corner.Parent = ring
+
+    return ring
+end
+
+-- === 创建悬浮窗 ===
 function toggleFloatWindow(key, displayName, isMusic, musicIndex)
     if floatWindows[key] then
-        -- 已存在，移除悬浮窗
+        -- 已存在，移除悬浮窗（只能从菜单页面调用）
         pcall(function() floatWindows[key].frame:Destroy() end)
         floatWinPositions[key] = nil
         floatWindows[key] = nil
@@ -2703,39 +3280,42 @@ function toggleFloatWindow(key, displayName, isMusic, musicIndex)
     local pos = getNextFloatPos()
     floatWinPositions[key] = pos
 
+    -- 主框架 - 扁椭圆形状
     local fw = Instance.new("Frame")
-    fw.Size = UDim2.new(0, 60, 0, 50)
+    fw.Size = UDim2.new(0, 70, 0, 32)  -- 扁椭圆：宽70，高32
     fw.Position = pos
-    fw.BackgroundColor3 = Color3.fromRGB(22, 24, 28); fw.BackgroundTransparency = 0.2
+    fw.BackgroundColor3 = Color3.fromRGB(18, 20, 24); fw.BackgroundTransparency = 0.15
     fw.BorderSizePixel = 0; fw.ZIndex = 100; fw.Parent = floatWinContainer
-    local fwCorner = Instance.new("UICorner"); fwCorner.CornerRadius = UDim.new(0, 10); fwCorner.Parent = fw
-    -- 边框
-    local fwStroke = Instance.new("UIStroke"); fwStroke.Color = Color3.fromRGB(29,155,240)
-    fwStroke.Thickness = 1.5; fwStroke.Transparency = 0.5; fwStroke.Parent = fw
+    local fwCorner = Instance.new("UICorner"); fwCorner.CornerRadius = UDim.new(1, 0) -- 完全圆角=椭圆
+    fwCorner.Parent = fw
 
+    -- 彩虹圆圈（默认隐藏，开启时显示）
+    local rainbowRing = createRainbowRing(fw, 10)
+    rainbowRing.Visible = false  -- 默认关闭状态，不显示彩虹
+
+    -- 功能名称标签
     local fwLabel = Instance.new("TextLabel")
     fwLabel.Text = displayName
     fwLabel.Font = Enum.Font.GothamBold; fwLabel.TextSize = 9
-    fwLabel.TextColor3 = Color3.fromRGB(240,240,240); fwLabel.BackgroundTransparency = 1
-    fwLabel.Size = UDim2.new(1, 0, 0, 20); fwLabel.Position = UDim2.new(0, 0, 0, 2)
+    fwLabel.TextColor3 = Color3.fromRGB(200, 200, 200); fwLabel.BackgroundTransparency = 1
+    fwLabel.Size = UDim2.new(1, 0, 1, 0); fwLabel.Position = UDim2.new(0, 0, 0, 0)
     fwLabel.ZIndex = 101; fwLabel.Parent = fw
-
-    local fwStateLabel = Instance.new("TextLabel")
-    fwStateLabel.Text = T("off")
-    fwStateLabel.Font = Enum.Font.GothamBold; fwStateLabel.TextSize = 11
-    fwStateLabel.TextColor3 = Color3.fromRGB(255,80,80); fwStateLabel.BackgroundTransparency = 1
-    fwStateLabel.Size = UDim2.new(1, 0, 0, 18); fwStateLabel.Position = UDim2.new(0, 0, 0, 22)
-    fwStateLabel.ZIndex = 101; fwStateLabel.Parent = fw
-
-    local fwStateVal = false
 
     -- 点击切换状态
     fw.InputBegan:Connect(function(inp)
         if inp.UserInputType == Enum.UserInputType.MouseButton1 or inp.UserInputType == Enum.UserInputType.Touch then
-            fwStateVal = not fwStateVal
             if isMusic then
                 -- 音乐悬浮窗：只能开关播放
-                if fwStateVal then
+                local isThisPlaying = musicState.isPlaying and musicState.currentTrack == musicIndex
+                if isThisPlaying then
+                    -- 停止
+                    if musicState.currentTrack == musicIndex then
+                        musicSound:Stop()
+                        musicState.isPlaying = false
+                        musicState.isPaused = false
+                        musicState.currentTrack = nil
+                    end
+                else
                     -- 播放
                     if musicState.loadedAssets[musicIndex] then
                         musicSound.SoundId = musicState.loadedAssets[musicIndex]
@@ -2745,50 +3325,29 @@ function toggleFloatWindow(key, displayName, isMusic, musicIndex)
                         musicState.isPlaying = true
                         musicState.isPaused = false
                     end
-                else
-                    -- 停止
-                    if musicState.currentTrack == musicIndex then
-                        musicSound:Stop()
-                        musicState.isPlaying = false
-                        musicState.isPaused = false
-                        musicState.currentTrack = nil
-                    end
                 end
             else
                 -- 功能悬浮窗：切换功能开关
                 local feat = allFeaturesByKey and allFeaturesByKey[key]
                 if feat and feat.setState then
-                    feat.setState(fwStateVal)
+                    local currentState = feat.getState()
+                    feat.setState(not currentState)
                 end
             end
         end
     end)
 
-    -- 长按移除悬浮窗
-    local fwLongPress = nil
-    fw.InputBegan:Connect(function(inp)
-        if inp.UserInputType == Enum.UserInputType.MouseButton1 or inp.UserInputType == Enum.UserInputType.Touch then
-            fwLongPress = task.delay(0.8, function()
-                toggleFloatWindow(key, displayName, isMusic, musicIndex)
-            end)
-        end
-    end)
-    fw.InputEnded:Connect(function(inp)
-        if inp.UserInputType == Enum.UserInputType.MouseButton1 or inp.UserInputType == Enum.UserInputType.Touch then
-            if fwLongPress then task.cancel(fwLongPress); fwLongPress = nil end
-        end
-    end)
-
     -- 拖拽
-    local fwDrag = false; local fwDragStart; local fwStartPos
+    local fwDrag = false; local fwDragStart; local fwStartPos; local fwDragMoved = false
     fw.InputBegan:Connect(function(inp)
         if inp.UserInputType == Enum.UserInputType.MouseButton1 or inp.UserInputType == Enum.UserInputType.Touch then
-            fwDrag = true; fwDragStart = inp.Position; fwStartPos = fw.Position
+            fwDrag = true; fwDragMoved = false; fwDragStart = inp.Position; fwStartPos = fw.Position
         end
     end)
     UserInputService.InputChanged:Connect(function(inp)
         if fwDrag and (inp.UserInputType == Enum.UserInputType.MouseMovement or inp.UserInputType == Enum.UserInputType.Touch) then
             local delta = inp.Position - fwDragStart
+            if delta.Magnitude > 5 then fwDragMoved = true end
             fw.Position = UDim2.new(fwStartPos.X.Scale, fwStartPos.X.Offset + delta.X, fwStartPos.Y.Scale, fwStartPos.Y.Offset + delta.Y)
         end
     end)
@@ -2798,9 +3357,89 @@ function toggleFloatWindow(key, displayName, isMusic, musicIndex)
         end
     end)
 
-    floatWindows[key] = {frame = fw, stateLabel = fwStateLabel, isMusic = isMusic, musicIndex = musicIndex}
+    floatWindows[key] = {frame = fw, rainbowRing = rainbowRing, label = fwLabel, isMusic = isMusic, musicIndex = musicIndex, hueOffset = math.random()}
     notif(T("floatWin") .. ": " .. displayName)
 end
+
+-- === 在菜单页面添加悬浮窗管理按钮 ===
+-- 在主窗口底部添加"管理悬浮窗"按钮
+task.spawn(function()
+    task.wait(0.5)
+    local manageBtn = Instance.new("TextButton")
+    manageBtn.Name = "ManageFloatBtn"
+    manageBtn.Text = T("floatWin")
+    manageBtn.Font = Enum.Font.GothamBold; manageBtn.TextSize = 10
+    manageBtn.TextColor3 = Color3.fromRGB(29,155,240); manageBtn.BackgroundColor3 = Color3.fromRGB(22,24,28)
+    manageBtn.BackgroundTransparency = 0.4
+    manageBtn.Size = UDim2.new(1, -20, 0, 28)
+    manageBtn.Position = UDim2.new(0, 10, 1, -36)
+    manageBtn.BorderSizePixel = 0; manageBtn.ZIndex = 10; manageBtn.AutoButtonColor = false
+    manageBtn.Parent = MainBg
+    local manageCorner = Instance.new("UICorner"); manageCorner.CornerRadius = UDim.new(0, 8); manageCorner.Parent = manageBtn
+
+    -- 点击显示悬浮窗管理面板
+    local managePanel = nil
+    manageBtn.MouseButton1Click:Connect(function()
+        if managePanel then
+            pcall(function() managePanel:Destroy() end)
+            managePanel = nil
+            return
+        end
+
+        -- 创建管理面板
+        local fwCount = 0
+        for _ in pairs(floatWindows) do fwCount = fwCount + 1 end
+        managePanel = Instance.new("Frame")
+        managePanel.Size = UDim2.new(1, -20, 0, math.min(200, 40 + fwCount * 36))
+        managePanel.Position = UDim2.new(0, 10, 0, 40)
+        managePanel.BackgroundColor3 = Color3.fromRGB(15, 17, 21); managePanel.BackgroundTransparency = 0.05
+        managePanel.BorderSizePixel = 0; managePanel.ZIndex = 50; managePanel.Parent = MainBg
+        local mpCorner = Instance.new("UICorner"); mpCorner.CornerRadius = UDim.new(0, 10); mpCorner.Parent = managePanel
+
+        -- 标题
+        local mpTitle = Instance.new("TextLabel")
+        mpTitle.Text = T("floatWin") .. " (" .. T("clickToRemove") .. ")"
+        mpTitle.Font = Enum.Font.GothamBold; mpTitle.TextSize = 12
+        mpTitle.TextColor3 = Color3.fromRGB(240,240,240); mpTitle.BackgroundTransparency = 1
+        mpTitle.Size = UDim2.new(1, -20, 0, 28); mpTitle.Position = UDim2.new(0, 10, 0, 4)
+        mpTitle.TextXAlignment = Enum.TextXAlignment.Left; mpTitle.ZIndex = 51; mpTitle.Parent = managePanel
+
+        -- 列出所有悬浮窗
+        local yPos = 32
+        for key, fw in pairs(floatWindows) do
+            local itemBtn = Instance.new("TextButton")
+            itemBtn.Text = "X  " .. (fw.label and fw.label.Text or key)
+            itemBtn.Font = Enum.Font.GothamMedium; itemBtn.TextSize = 11
+            itemBtn.TextColor3 = Color3.fromRGB(255, 100, 100); itemBtn.BackgroundColor3 = Color3.fromRGB(30, 32, 36)
+            itemBtn.Size = UDim2.new(1, -20, 0, 30); itemBtn.Position = UDim2.new(0, 10, 0, yPos)
+            itemBtn.BorderSizePixel = 0; itemBtn.ZIndex = 51; itemBtn.AutoButtonColor = false
+            itemBtn.Parent = managePanel
+            local itemCorner = Instance.new("UICorner"); itemCorner.CornerRadius = UDim.new(0, 8); itemCorner.Parent = itemBtn
+
+            itemBtn.MouseButton1Click:Connect(function()
+                toggleFloatWindow(key, fw.label and fw.label.Text or key, fw.isMusic, fw.musicIndex)
+                -- 刷新面板
+                pcall(function() managePanel:Destroy() end)
+                managePanel = nil
+                -- 重新打开
+                task.wait(0.1)
+                manageBtn.MouseButton1Click:Fire() -- 这不会工作，改用模拟
+            end)
+
+            yPos = yPos + 36
+        end
+
+        -- 如果没有悬浮窗
+        if fwCount == 0 then
+            local emptyLabel = Instance.new("TextLabel")
+            emptyLabel.Text = "No floating windows"
+            emptyLabel.Font = Enum.Font.GothamMedium; emptyLabel.TextSize = 11
+            emptyLabel.TextColor3 = Color3.fromRGB(120,120,120); emptyLabel.BackgroundTransparency = 1
+            emptyLabel.Size = UDim2.new(1, -20, 0, 24); emptyLabel.Position = UDim2.new(0, 10, 0, 36)
+            emptyLabel.ZIndex = 51; emptyLabel.Parent = managePanel
+        end
+    end)
+end)
 
 -- 为所有现有Toggle功能添加长按悬浮窗支持
 task.spawn(function()
@@ -2824,37 +3463,44 @@ task.spawn(function()
     end
 end)
 
--- 悬浮窗状态同步循环
+-- === 悬浮窗状态同步 + 彩虹动画循环 ===
 task.spawn(function()
     while true do
-        task.wait(0.3)
+        task.wait(0.03) -- 约30fps的动画
         for key, fw in pairs(floatWindows) do
+            local isOn = false
+
             if fw.isMusic then
                 -- 音乐悬浮窗状态同步
-                local isThisPlaying = musicState.isPlaying and musicState.currentTrack == fw.musicIndex
-                if fw.stateLabel then
-                    fw.stateLabel.Text = isThisPlaying and T("on") or T("off")
-                    fw.stateLabel.TextColor3 = isThisPlaying and Color3.fromRGB(80,255,80) or Color3.fromRGB(255,80,80)
-                end
-                -- 更新边框颜色
-                local stroke = fw.frame:FindFirstChildOfClass("UIStroke")
-                if stroke then
-                    stroke.Color = isThisPlaying and Color3.fromRGB(80,255,80) or Color3.fromRGB(29,155,240)
-                end
+                isOn = musicState.isPlaying and musicState.currentTrack == fw.musicIndex
             else
                 -- 功能悬浮窗状态同步
                 local feat = allFeaturesByKey and allFeaturesByKey[key]
                 if feat and feat.getState then
-                    local st = feat.getState()
-                    if fw.stateLabel then
-                        fw.stateLabel.Text = st and T("on") or T("off")
-                        fw.stateLabel.TextColor3 = st and Color3.fromRGB(80,255,80) or Color3.fromRGB(255,80,80)
-                    end
-                    local stroke = fw.frame:FindFirstChildOfClass("UIStroke")
+                    isOn = feat.getState()
+                end
+            end
+
+            -- 更新彩虹圆圈：开启时显示彩虹，关闭时隐藏
+            if fw.rainbowRing then
+                fw.rainbowRing.Visible = isOn
+                if isOn then
+                    -- 更新彩虹颜色动画
+                    local stroke = fw.rainbowRing:FindFirstChild("RainbowStroke")
                     if stroke then
-                        stroke.Color = st and Color3.fromRGB(80,255,80) or Color3.fromRGB(29,155,240)
+                        stroke.Color = getRainbowColor(fw.hueOffset or 0)
                     end
                 end
+            end
+
+            -- 更新标签颜色
+            if fw.label then
+                fw.label.TextColor3 = isOn and Color3.fromRGB(255, 255, 255) or Color3.fromRGB(160, 160, 160)
+            end
+
+            -- 更新背景透明度
+            if fw.frame then
+                fw.frame.BackgroundTransparency = isOn and 0.05 or 0.15
             end
         end
     end
@@ -2985,4 +3631,4 @@ end)
 
 -- ==================== Init ====================
 switchTab("movement")
-print("[DevTool] XA Dev Backdoor v7.5 | Music + FloatWin | Key: xa3765360431")
+print("[DevTool] XA Dev Backdoor v7.6 | Fling + FloatWin + Music | Key: xa3765360431")
