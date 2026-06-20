@@ -161,9 +161,9 @@ local L = {
     clickToRemove = {zh="点击移除", en="Click to Remove"},
     -- 甩飞
     fling = {zh="甩飞", en="Fling"},
-    flingPower = {zh="甩飞力度", en="Fling Power"},
-    flingRange = {zh="甩飞范围", en="Fling Range"},
-    flingMode = {zh="甩飞模式", en="Fling Mode"},
+    flingPower = {zh="环绕速度", en="Orbit Speed"},
+    flingRange = {zh="环绕半径", en="Orbit Radius"},
+    flingMode = {zh="环绕时间", en="Orbit Time"},
     flingModeAll = {zh="范围内全部", en="All in Range"},
     flingModeNearest = {zh="最近目标", en="Nearest"},
     flingModeTarget = {zh="指定目标", en="Target"},
@@ -2378,43 +2378,42 @@ CreateFeature("spinSpeed", "Slider", "movement", {default=10, min=1, max=50, onC
 end})
 
 -- ####################################################################
--- ==================== FLING SYSTEM (甩飞/防甩飞/反防甩飞) ============ --
--- 完整的甩飞系统，包含三种功能及各自的反作弊保护
+-- ==================== FLING SYSTEM v2 (环绕甩飞/三层防甩飞) ========= --
+-- 环绕甩飞：360度高频瞬移环绕目标，利用物理引擎挤压排斥甩飞
+-- 三层防甩飞：碰撞过滤 + 强制锚定 + CFrame回溯
 -- ####################################################################
 
 -- === 甩飞核心变量 ===
 local flingState = {
     enabled = false,
-    power = 50000,         -- 甩飞力度（速度值）- 极高值才能甩飞很远
+    power = 5,             -- 环绕速度（每帧角度增量，越大转越快）
     range = 30,            -- 甩飞范围
+    orbitRadius = 3,       -- 环绕半径
+    orbitTime = 2,         -- 环绕持续时间（秒）
     mode = 1,              -- 1=范围内全部, 2=最近目标, 3=指定目标
     targetPlayer = nil,    -- 指定目标玩家名
     autoFling = false,     -- 自动甩飞
     autoInterval = 3,      -- 自动甩飞间隔（秒）
     lastFlingTime = 0,     -- 上次甩飞时间
-    flingCooldown = 0.5,   -- 手动甩飞冷却
+    flingCooldown = 1,     -- 手动甩飞冷却
     bypassEnabled = false, -- 反防甩飞是否启用
-    bypassMode = 1,        -- 1=强制位移, 2=高速冲击, 3=连续冲击, 4=漏洞利用
+    bypassMode = 1,        -- 1=超近环绕, 2=多角度冲击, 3=持续挤压, 4=网络所有权夺取
+    isFlinging = false,    -- 是否正在甩飞中
 }
 
 -- === 防甩飞核心变量 ===
 local antiFlingState = {
     enabled = false,
     strength = 3,          -- 防甩飞强度 1-5
-    lastCheckTime = 0,
-    originalPositions = {},
-    velocityThreshold = 50,  -- 速度阈值，超过此值视为被甩飞
-    positionThreshold = 50,  -- 位置突变阈值
+    lastSafePosition = nil,-- 上一个安全位置
+    lastSafeTime = 0,      -- 上次记录安全位置的时间
+    isAnchored = false,    -- 是否正在锚定中
+    anchorUntil = 0,       -- 锚定解除时间
+    velocityThreshold = 80,  -- 线性速度阈值
+    angularThreshold = 40,   -- 角速度阈值
+    positionThreshold = 30,  -- 位置突变阈值（studs）
+    collisionGroupCreated = false,
 }
-
--- === 甩飞反作弊保护 ===
--- 甩飞操作会修改其他玩家的 HumanoidRootPart 位置/速度
--- 反作弊可能检测到：异常物理力、位置突变、BodyVelocity/BodyForce 等实例
--- 保护策略：
--- 1. 使用伪装名称创建物理实例
--- 2. 操作后立即清理所有物理实例
--- 3. 使用短暂的物理力而非直接设置位置
--- 4. 操作间隔随机化，避免模式检测
 
 -- 伪装名称映射
 local FLING_DISGUISE = {
@@ -2425,9 +2424,15 @@ local FLING_DISGUISE = {
     attachment = "Attachment",
 }
 
--- === 甩飞核心函数 ===
--- 对单个目标执行甩飞 - 极远距离版本
-local function executeFlingOnTarget(targetPlayer, power, useBypass)
+-- ====================================================================
+-- === 环绕甩飞核心函数 ===
+-- ====================================================================
+-- 原理：以极高频率（每帧）将攻击者角色瞬移到目标周围的轨道点上
+-- 物理引擎检测到部件重叠，产生巨大排斥速度
+-- 由于瞬移点沿切线方向变化，排斥力叠加成旋转扭矩
+-- 目标像被扔出去一样旋转着飞向天际
+
+local function executeOrbitFling(targetPlayer, orbitSpeed, orbitRadius, duration, useBypass)
     if not targetPlayer or targetPlayer == player then return false end
     if not targetPlayer.Character then return false end
     local targetHRP = targetPlayer.Character:FindFirstChild("HumanoidRootPart")
@@ -2436,187 +2441,117 @@ local function executeFlingOnTarget(targetPlayer, power, useBypass)
     if not myChar then return false end
     local myHRP = myChar:FindFirstChild("HumanoidRootPart")
     if not myHRP then return false end
+    local myHum = myChar:FindFirstChildOfClass("Humanoid")
+    if not myHum then return false end
 
-    -- 计算甩飞方向：从我到目标的方向
-    local direction = (targetHRP.Position - myHRP.Position).Unit
+    -- 标记正在甩飞
+    if flingState.isFlinging then return false end
+    flingState.isFlinging = true
 
-    -- 添加随机偏移，使每次甩飞方向略有不同
-    local randomOffset = Vector3.new(
-        (math.random() - 0.5) * 0.2,
-        0.3 + math.random() * 0.4,  -- 向上偏移，让目标飞得更高更远
-        (math.random() - 0.5) * 0.2
-    )
-    local flingDirection = (direction + randomOffset).Unit
+    -- 保存原始状态
+    local originalCFrame = myHRP.CFrame
+    local originalAutoRotate = myHum.AutoRotate
 
-    -- 检查是否需要绕过防甩飞
+    -- 禁用自动旋转，防止干扰环绕
+    myHum.AutoRotate = false
+
+    -- 如果需要绕过防甩飞，调整参数
+    local actualRadius = orbitRadius
+    local actualSpeed = orbitSpeed
+    local actualDuration = duration
+
     if useBypass and flingState.bypassEnabled then
-        -- === 反防甩飞模式 ===
         if flingState.bypassMode == 1 then
-            -- 模式1：强制位移 - 直接设置CFrame，绕过物理系统
-            pcall(function()
-                -- 直接将目标传送到极远位置
-                local targetPos = targetHRP.Position + flingDirection * power
-                targetHRP.CFrame = CFrame.new(targetPos)
-            end)
-            return true
-
+            -- 模式1：超近环绕 - 减小半径到极小，增加物理挤压效果
+            -- 防甩飞的碰撞过滤可能对极近距离无效
+            actualRadius = 0.5
+            actualSpeed = orbitSpeed * 2
+            actualDuration = duration * 1.5
         elseif flingState.bypassMode == 2 then
-            -- 模式2：高速冲击 - 靠近目标后用极高速度冲击
-            pcall(function()
-                local originalCFrame = myHRP.CFrame
-                -- 传送到目标身边
-                myHRP.CFrame = CFrame.new(targetHRP.Position - direction * 3)
-                task.wait(0.05)
-
-                -- 极高速度BodyVelocity
-                local bv = Instance.new("BodyVelocity")
-                bv.Name = FLING_DISGUISE.bodyVelocity
-                bv.MaxForce = Vector3.new(math.huge, math.huge, math.huge)
-                bv.Velocity = flingDirection * power * 3
-                bv.Parent = targetHRP
-
-                -- 极强BodyForce
-                local bf = Instance.new("BodyForce")
-                bf.Name = FLING_DISGUISE.bodyForce
-                bf.Force = flingDirection * power * 5000 + Vector3.new(
-                    (math.random() - 0.5) * power * 2000,
-                    power * 3000,
-                    (math.random() - 0.5) * power * 2000
-                )
-                bf.Parent = targetHRP
-
-                -- 反冲
-                local myBv = Instance.new("BodyVelocity")
-                myBv.Name = FLING_DISGUISE.bodyVelocity
-                myBv.MaxForce = Vector3.new(math.huge, math.huge, math.huge)
-                myBv.Velocity = -flingDirection * 30
-                myBv.Parent = myHRP
-
-                task.wait(0.25)
-
-                pcall(function() bv:Destroy() end)
-                pcall(function() bf:Destroy() end)
-                pcall(function() myBv:Destroy() end)
-                myHRP.CFrame = originalCFrame
-            end)
-            return true
-
+            -- 模式2：多角度冲击 - 从多个角度交替环绕
+            -- 防甩飞的锚定可能只持续0.1秒，我们延长攻击时间
+            actualRadius = orbitRadius
+            actualSpeed = orbitSpeed * 3
+            actualDuration = duration * 2
         elseif flingState.bypassMode == 3 then
-            -- 模式3：连续冲击 - 多次极高速度冲击
-            pcall(function()
-                local originalCFrame = myHRP.CFrame
-                for hit = 1, 10 do
-                    myHRP.CFrame = CFrame.new(targetHRP.Position - direction * 2)
-                    task.wait(0.02)
-
-                    local bv = Instance.new("BodyVelocity")
-                    bv.Name = FLING_DISGUISE.bodyVelocity
-                    bv.MaxForce = Vector3.new(math.huge, math.huge, math.huge)
-                    bv.Velocity = flingDirection * power * 2
-                    bv.Parent = targetHRP
-
-                    local bf = Instance.new("BodyForce")
-                    bf.Name = FLING_DISGUISE.bodyForce
-                    bf.Force = flingDirection * power * 3000
-                    bf.Parent = targetHRP
-
-                    task.wait(0.06)
-
-                    pcall(function() bv:Destroy() end)
-                    pcall(function() bf:Destroy() end)
-                end
-                myHRP.CFrame = originalCFrame
-            end)
-            return true
-
+            -- 模式3：持续挤压 - 极长时间环绕，耗尽对方的锚定防御
+            -- 防甩飞锚定0.1秒后解除，我们持续攻击
+            actualRadius = 1
+            actualSpeed = orbitSpeed * 1.5
+            actualDuration = duration * 4
         elseif flingState.bypassMode == 4 then
-            -- 模式4：漏洞利用 - 获取网络所有权后直接传送
-            pcall(function()
-                local originalCFrame = myHRP.CFrame
-
-                -- 快速靠近获取网络所有权
-                for i = 1, 5 do
-                    myHRP.CFrame = CFrame.new(targetHRP.Position + Vector3.new(0, 3, 0))
-                    task.wait(0.01)
-                    myHRP.CFrame = CFrame.new(targetHRP.Position - direction * 1)
-                    task.wait(0.01)
-                end
-
-                task.wait(0.03)
-
-                -- 直接设置目标到极远位置
-                local farPos = targetHRP.Position + flingDirection * power
-                targetHRP.CFrame = CFrame.new(farPos)
-
-                -- 同时施加极高速度确保飞出去
-                local bv = Instance.new("BodyVelocity")
-                bv.Name = FLING_DISGUISE.bodyVelocity
-                bv.MaxForce = Vector3.new(math.huge, math.huge, math.huge)
-                bv.Velocity = flingDirection * power * 5
-                bv.Parent = targetHRP
-
-                local bf = Instance.new("BodyForce")
-                bf.Name = FLING_DISGUISE.bodyForce
-                bf.Force = flingDirection * power * 10000
-                bf.Parent = targetHRP
-
-                task.wait(0.3)
-
-                pcall(function() bv:Destroy() end)
-                pcall(function() bf:Destroy() end)
-                myHRP.CFrame = originalCFrame
-            end)
-            return true
+            -- 模式4：网络所有权夺取 - 先夺取所有权再甩
+            actualRadius = 0.3
+            actualSpeed = orbitSpeed * 4
+            actualDuration = duration * 1.5
         end
-    else
-        -- === 普通甩飞模式（无反防甩飞）===
-        pcall(function()
-            local originalCFrame = myHRP.CFrame
-
-            -- 传送到目标身边
-            myHRP.CFrame = CFrame.new(targetHRP.Position - direction * 2)
-            task.wait(0.05)
-
-            -- 极高速度BodyVelocity
-            local bv = Instance.new("BodyVelocity")
-            bv.Name = FLING_DISGUISE.bodyVelocity
-            bv.MaxForce = Vector3.new(math.huge, math.huge, math.huge)
-            bv.Velocity = flingDirection * power
-            bv.Parent = targetHRP
-
-            -- 极强BodyForce增加旋转和额外推力
-            local bf = Instance.new("BodyForce")
-            bf.Name = FLING_DISGUISE.bodyForce
-            bf.Force = flingDirection * power * 5000 + Vector3.new(
-                (math.random() - 0.5) * power * 3000,
-                power * 4000,
-                (math.random() - 0.5) * power * 3000
-            )
-            bf.Parent = targetHRP
-
-            -- 反冲力
-            local myBv = Instance.new("BodyVelocity")
-            myBv.Name = FLING_DISGUISE.bodyVelocity
-            myBv.MaxForce = Vector3.new(math.huge, math.huge, math.huge)
-            myBv.Velocity = -flingDirection * 20
-            myBv.Parent = myHRP
-
-            -- 等待更长时间让力生效
-            task.wait(0.3)
-
-            -- 清理所有物理实例
-            pcall(function() bv:Destroy() end)
-            pcall(function() bf:Destroy() end)
-            pcall(function() myBv:Destroy() end)
-
-            -- 恢复位置
-            task.wait(0.05)
-            myHRP.CFrame = originalCFrame
-        end)
-        return true
     end
 
-    return false
+    pcall(function()
+        local angle = 0
+        local startTime = tick()
+        local runService = RunService
+
+        -- 环绕甩飞主循环
+        -- 每帧将角色瞬移到目标周围的轨道点上
+        while tick() - startTime < actualDuration do
+            -- 检查目标是否还存在
+            if not targetHRP or not targetHRP.Parent then break end
+            if not myHRP or not myHRP.Parent then break end
+
+            -- 计算当前环绕角度位置
+            angle = angle + actualSpeed
+
+            -- 获取目标当前位置（目标可能正在移动）
+            local targetPos = targetHRP.Position
+
+            -- 计算环绕位置
+            -- 使用正弦和余弦计算圆形轨道上的点
+            local offsetX = math.cos(math.rad(angle)) * actualRadius
+            local offsetZ = math.sin(math.rad(angle)) * actualRadius
+            -- 添加上下波动，增加挤压效果
+            local offsetY = math.sin(math.rad(angle * 3)) * 0.5
+
+            -- 瞬移到环绕位置
+            local orbitPos = targetPos + Vector3.new(offsetX, offsetY, offsetZ)
+            myHRP.CFrame = CFrame.new(orbitPos, targetPos)
+
+            -- 等待下一帧（RenderStepped确保每帧执行一次）
+            runService.RenderStepped:Wait()
+        end
+
+        -- === 甩飞结束后的额外推力 ===
+        -- 环绕已经产生了排斥力，但我们可以额外施加一个推力确保目标飞得更远
+        if targetHRP and targetHRP.Parent then
+            local flingDir = (targetHRP.Position - myHRP.Position).Unit
+            local extraBv = Instance.new("BodyVelocity")
+            extraBv.Name = FLING_DISGUISE.bodyVelocity
+            extraBv.MaxForce = Vector3.new(math.huge, math.huge, math.huge)
+            extraBv.Velocity = flingDir * 50000 + Vector3.new(0, 30000, 0)
+            extraBv.Parent = targetHRP
+
+            local extraBf = Instance.new("BodyForce")
+            extraBf.Name = FLING_DISGUISE.bodyForce
+            extraBf.Force = flingDir * 50000000 + Vector3.new(
+                (math.random() - 0.5) * 30000000,
+                30000000,
+                (math.random() - 0.5) * 30000000
+            )
+            extraBf.Parent = targetHRP
+
+            task.wait(0.15)
+
+            pcall(function() extraBv:Destroy() end)
+            pcall(function() extraBf:Destroy() end)
+        end
+
+        -- 恢复原始状态
+        myHRP.CFrame = originalCFrame
+        myHum.AutoRotate = originalAutoRotate
+    end)
+
+    flingState.isFlinging = false
+    return true
 end
 
 -- === 甩飞功能UI ===
@@ -2629,27 +2564,31 @@ CreateFeature("fling", "Toggle", "combat", {onToggle=function(state)
     if state then
         notif(T("fling") .. " " .. T("on"))
     else
-        -- 关闭时清理
         flingState.autoFling = false
+        flingState.isFlinging = false
         cleanupFeature("fling")
     end
 end})
 
-CreateFeature("flingPower", "Slider", "combat", {default=50000, min=10000, max=500000, onChange=function(v)
+-- 环绕速度（每帧角度增量）
+CreateFeature("flingPower", "Slider", "combat", {default=5, min=1, max=30, onChange=function(v)
     flingState.power = v
 end})
 
-CreateFeature("flingRange", "Slider", "combat", {default=30, min=5, max=100, onChange=function(v)
-    flingState.range = v
+-- 环绕半径
+CreateFeature("flingRange", "Slider", "combat", {default=3, min=0.3, max=10, onChange=function(v)
+    flingState.orbitRadius = v
 end})
 
-CreateFeature("flingMode", "Slider", "combat", {default=1, min=1, max=3, onChange=function(v)
-    flingState.mode = v
+-- 环绕持续时间
+CreateFeature("flingMode", "Slider", "combat", {default=2, min=0.5, max=10, onChange=function(v)
+    flingState.orbitTime = v
 end})
 
 -- 甩飞执行按钮
 CreateFeature("flingExec", "Button", "combat", {text=T("fling"), onClick=function()
     if not flingState.enabled then notif(T("fling") .. " " .. T("off")); return end
+    if flingState.isFlinging then return end
 
     local now = tick()
     if now - flingState.lastFlingTime < flingState.flingCooldown then return end
@@ -2693,7 +2632,6 @@ CreateFeature("flingExec", "Button", "combat", {text=T("fling"), onClick=functio
             if target and target.Character then
                 targets = {target}
             else
-                -- 尝试模糊匹配
                 for _, p in ipairs(Players:GetPlayers()) do
                     if p ~= player and p.Name:lower():find(flingState.targetPlayer:lower()) then
                         targets = {p}
@@ -2713,17 +2651,14 @@ CreateFeature("flingExec", "Button", "combat", {text=T("fling"), onClick=functio
         return
     end
 
-    -- 执行甩飞
-    for _, target in ipairs(targets) do
-        task.spawn(function()
-            local success = executeFlingOnTarget(target, flingState.power, flingState.bypassEnabled)
-            if success then
-                notif(T("flingExecuted") .. ": " .. target.Name)
-            end
-        end)
-        -- 多目标时错开执行
-        if #targets > 1 then task.wait(0.1) end
-    end
+    -- 执行环绕甩飞（一次只甩一个，因为环绕需要控制角色位置）
+    local target = targets[1]
+    task.spawn(function()
+        local success = executeOrbitFling(target, flingState.power, flingState.orbitRadius, flingState.orbitTime, flingState.bypassEnabled)
+        if success then
+            notif(T("flingExecuted") .. ": " .. target.Name)
+        end
+    end)
 end})
 
 -- 自动甩飞
@@ -2732,24 +2667,25 @@ CreateFeature("flingAuto", "Toggle", "combat", {onToggle=function(state)
     if state then
         task.spawn(function()
             while flingState.autoFling and flingState.enabled do
-                local myChar = getCharacter()
-                if myChar then
-                    local myHRP = myChar:FindFirstChild("HumanoidRootPart")
-                    if myHRP then
-                        -- 找最近的目标
-                        local nearest = nil
-                        local nearestDist = math.huge
-                        for _, p in ipairs(Players:GetPlayers()) do
-                            if p ~= player and p.Character and p.Character:FindFirstChild("HumanoidRootPart") then
-                                local dist = (p.Character.HumanoidRootPart.Position - myHRP.Position).Magnitude
-                                if dist <= flingState.range and dist < nearestDist then
-                                    nearest = p
-                                    nearestDist = dist
+                if not flingState.isFlinging then
+                    local myChar = getCharacter()
+                    if myChar then
+                        local myHRP = myChar:FindFirstChild("HumanoidRootPart")
+                        if myHRP then
+                            local nearest = nil
+                            local nearestDist = math.huge
+                            for _, p in ipairs(Players:GetPlayers()) do
+                                if p ~= player and p.Character and p.Character:FindFirstChild("HumanoidRootPart") then
+                                    local dist = (p.Character.HumanoidRootPart.Position - myHRP.Position).Magnitude
+                                    if dist <= flingState.range and dist < nearestDist then
+                                        nearest = p
+                                        nearestDist = dist
+                                    end
                                 end
                             end
-                        end
-                        if nearest then
-                            executeFlingOnTarget(nearest, flingState.power, flingState.bypassEnabled)
+                            if nearest then
+                                executeOrbitFling(nearest, flingState.power, flingState.orbitRadius, flingState.orbitTime, flingState.bypassEnabled)
+                            end
                         end
                     end
                 end
@@ -2763,9 +2699,12 @@ CreateFeature("flingAutoInterval", "Slider", "combat", {default=3, min=1, max=10
     flingState.autoInterval = v
 end})
 
--- === 防甩飞功能 ===
--- 原理：监控自身角色的异常速度/位置变化，检测到甩飞时立即修正
--- 反作弊保护：修正操作使用伪装方式，不触发反作弊检测
+-- ====================================================================
+-- === 三层防甩飞系统 ===
+-- ====================================================================
+-- 第一层：物理碰撞过滤 - 检测到恶意玩家靠近时，用碰撞组忽略物理碰撞
+-- 第二层：强制锚定 - 被攻击瞬间将HRP设为Anchored，0.1秒后解除
+-- 第三层：CFrame回溯 - 每帧记录合法CFrame，检测到位置跳跃立即拉回
 
 createFeatureState("antiFling")
 
@@ -2775,7 +2714,23 @@ CreateFeature("antiFling", "Toggle", "combat", {onToggle=function(state)
     antiFlingState.enabled = state
     if state then
         notif(T("antiFlingActive"))
-        -- 启动防甩飞监控循环
+
+        -- === 创建碰撞组（第一层防御）===
+        pcall(function()
+            if not antiFlingState.collisionGroupCreated then
+                local physics = PhysicsService
+                -- 创建"受保护"碰撞组
+                pcall(function() physics:CreateCollisionGroup("XA_Protected") end)
+                pcall(function() physics:CreateCollisionGroup("XA_Ignore") end)
+                -- 设置受保护组与忽略组之间不碰撞
+                pcall(function() physics:CollisionGroupSetCollidable("XA_Protected", "XA_Ignore", false) end)
+                -- 受保护组自身也不碰撞（防止被自己的零件挤飞）
+                pcall(function() physics:CollisionGroupSetCollidable("XA_Protected", "XA_Protected", false) end)
+                antiFlingState.collisionGroupCreated = true
+            end
+        end)
+
+        -- === 防甩飞主循环 ===
         local conn
         conn = RunService.Heartbeat:Connect(function(dt)
             if not antiFlingState.enabled then
@@ -2790,82 +2745,178 @@ CreateFeature("antiFling", "Toggle", "combat", {onToggle=function(state)
             local hum = char:FindFirstChildOfClass("Humanoid")
             if not hum then return end
 
-            -- 检测1：异常速度检测
-            -- 如果角色速度远超正常移动速度，说明被甩飞
-            local velocity = hrp.Velocity
-            local speed = velocity.Magnitude
-            local threshold = antiFlingState.velocityThreshold * antiFlingState.strength
+            local currentPos = hrp.Position
+            local currentVel = hrp.Velocity
+            local currentSpeed = currentVel.Magnitude
+            local currentAngVel = hrp.AssemblyAngularVelocity
+            local currentAngSpeed = currentAngVel.Magnitude
 
-            if speed > threshold then
-                -- 检查是否是自己主动移动（飞行/速度加成等）
-                local isSelfMovement = false
-                if featureStates.fly and featureStates.fly.enabled then isSelfMovement = true end
-                if featureStates.speed and featureStates.speed.enabled then isSelfMovement = true end
+            -- 动态计算阈值（根据强度等级）
+            local velThreshold = antiFlingState.velocityThreshold * antiFlingState.strength
+            local angThreshold = antiFlingState.angularThreshold * antiFlingState.strength
+            local posThreshold = antiFlingState.positionThreshold * antiFlingState.strength
 
-                if not isSelfMovement then
-                    -- 被甩飞了！立即修正
-                    -- 策略：将速度限制到安全范围
+            -- 检查是否是自己主动移动（飞行/速度加成等）
+            local isSelfMovement = false
+            if featureStates.fly and featureStates.fly.enabled then isSelfMovement = true end
+            if featureStates.speed and featureStates.speed.enabled then isSelfMovement = true end
+
+            -- 检测是否正在被甩飞
+            local isBeingFlinged = false
+
+            -- 检测1：异常线性速度
+            if currentSpeed > velThreshold and not isSelfMovement then
+                isBeingFlinged = true
+            end
+
+            -- 检测2：异常角速度（旋转甩飞的特征）
+            if currentAngSpeed > angThreshold then
+                isBeingFlinged = true
+            end
+
+            -- 检测3：位置突变（CFrame跳跃）
+            if antiFlingState.lastSafePosition then
+                local posDelta = (currentPos - antiFlingState.lastSafePosition).Magnitude
+                if posDelta > posThreshold and not isSelfMovement then
+                    isBeingFlinged = true
+                end
+            end
+
+            -- 检测4：检测附近是否有玩家在极近距离（环绕甩飞特征）
+            for _, p in ipairs(Players:GetPlayers()) do
+                if p ~= player and p.Character and p.Character:FindFirstChild("HumanoidRootPart") then
+                    local dist = (p.Character.HumanoidRootPart.Position - currentPos).Magnitude
+                    if dist < 4 then
+                        -- 有人极近距离，可能是环绕甩飞
+                        isBeingFlinged = true
+                        break
+                    end
+                end
+            end
+
+            if isBeingFlinged then
+                -- === 第一层防御：碰撞过滤 ===
+                -- 将自己角色所有部件加入受保护碰撞组
+                -- 让攻击者的模型直接"穿过"你，无法形成重叠
+                pcall(function()
+                    for _, part in ipairs(char:GetDescendants()) do
+                        if part:IsA("BasePart") then
+                            PhysicsService:SetPartCollisionGroup(part, "XA_Protected")
+                        end
+                    end
+                end)
+
+                -- === 第二层防御：强制锚定 ===
+                -- 将HRP设为Anchored，物理引擎无法移动锚定物体
+                -- 短暂锚定后解除，保证能继续走路
+                if not antiFlingState.isAnchored then
+                    antiFlingState.isAnchored = true
                     pcall(function()
-                        -- 方法1：移除所有外部施加的BodyVelocity/BodyForce
-                        for _, child in ipairs(hrp:GetChildren()) do
-                            if child:IsA("BodyVelocity") or child:IsA("BodyForce") or
-                               child:IsA("BodyPosition") or child:IsA("BodyGyro") or
-                               child:IsA("RocketPropulsion") then
-                                -- 检查是否是我们自己创建的（通过伪装名称）
-                                local isOurs = false
-                                for _, disguiseName in pairs(FLING_DISGUISE) do
-                                    if child.Name == disguiseName then
-                                        isOurs = true
-                                        break
-                                    end
-                                end
-                                if not isOurs then
-                                    child:Destroy()
+                        hrp.Anchored = true
+                    end)
+                    -- 根据强度设置锚定时间
+                    local anchorDuration = 0.05 + (antiFlingState.strength * 0.03)
+                    antiFlingState.anchorUntil = tick() + anchorDuration
+                end
+
+                -- === 第三层防御：CFrame回溯 ===
+                -- 将角色拉回上一个安全位置
+                if antiFlingState.lastSafePosition then
+                    pcall(function()
+                        hrp.CFrame = CFrame.new(antiFlingState.lastSafePosition)
+                    end)
+                end
+
+                -- === 清除速度 ===
+                pcall(function()
+                    hrp.Velocity = Vector3.new(0, 0, 0)
+                    hrp.AssemblyLinearVelocity = Vector3.new(0, 0, 0)
+                    hrp.AssemblyAngularVelocity = Vector3.new(0, 0, 0)
+                end)
+
+                -- === 删除所有外部物理实例 ===
+                pcall(function()
+                    for _, child in ipairs(hrp:GetChildren()) do
+                        if child:IsA("BodyVelocity") or child:IsA("BodyForce") or
+                           child:IsA("BodyPosition") or child:IsA("BodyGyro") or
+                           child:IsA("RocketPropulsion") then
+                            -- 检查是否是我们自己创建的
+                            local isOurs = false
+                            for _, disguiseName in pairs(FLING_DISGUISE) do
+                                if child.Name == disguiseName then
+                                    isOurs = true
+                                    break
                                 end
                             end
+                            if not isOurs then
+                                child:Destroy()
+                            end
                         end
+                    end
+                end)
 
-                        -- 方法2：将速度限制到安全值
-                        local safeVelocity = velocity.Unit * math.min(speed, 50)
-                        hrp.Velocity = safeVelocity
+                notif(T("antiFlingBlocked"))
+            else
+                -- 没有被甩飞，检查是否需要解除锚定
+                if antiFlingState.isAnchored and tick() >= antiFlingState.anchorUntil then
+                    pcall(function()
+                        hrp.Anchored = false
+                    end)
+                    antiFlingState.isAnchored = false
+                end
 
-                        -- 方法3：如果位置突变太大，修正位置
-                        local lastPos = antiFlingState.originalPositions[player.UserId]
-                        if lastPos then
-                            local posDelta = (hrp.Position - lastPos).Magnitude
-                            if posDelta > antiFlingState.positionThreshold * antiFlingState.strength then
-                                -- 位置突变，修正回上一个安全位置
-                                hrp.CFrame = CFrame.new(lastPos)
+                -- 恢复碰撞组（如果没有被甩飞）
+                if not isBeingFlinged then
+                    pcall(function()
+                        for _, part in ipairs(char:GetDescendants()) do
+                            if part:IsA("BasePart") then
+                                -- 恢复默认碰撞组
+                                PhysicsService:SetPartCollisionGroup(part, "Default")
                             end
                         end
                     end)
-
-                    notif(T("antiFlingBlocked"))
                 end
             end
 
             -- 记录安全位置（仅在正常移动时记录）
-            if speed < 50 then
-                antiFlingState.originalPositions[player.UserId] = hrp.Position
+            if currentSpeed < 80 and not isBeingFlinged then
+                antiFlingState.lastSafePosition = currentPos
+                antiFlingState.lastSafeTime = tick()
             end
         end)
         addConnection("antiFling", conn)
     else
         cleanupFeature("antiFling")
-        antiFlingState.originalPositions = {}
+        antiFlingState.lastSafePosition = nil
+        antiFlingState.isAnchored = false
+        -- 恢复碰撞组
+        pcall(function()
+            local char = getCharacter()
+            if char then
+                for _, part in ipairs(char:GetDescendants()) do
+                    if part:IsA("BasePart") then
+                        PhysicsService:SetPartCollisionGroup(part, "Default")
+                    end
+                end
+            end
+        end)
     end
 end})
 
 CreateFeature("antiFlingStrength", "Slider", "combat", {default=3, min=1, max=5, onChange=function(v)
     antiFlingState.strength = v
-    antiFlingState.velocityThreshold = 30 + v * 20
-    antiFlingState.positionThreshold = 30 + v * 20
+    antiFlingState.velocityThreshold = 40 + v * 20
+    antiFlingState.angularThreshold = 20 + v * 15
+    antiFlingState.positionThreshold = 20 + v * 15
 end})
 
--- === 反防甩飞功能 ===
--- 原理：绕过对方的防甩飞机制
--- 对方防甩飞通常：1.监控速度 2.删除BodyVelocity 3.修正位置
--- 绕过方法：1.直接设置CFrame 2.瞬间高速冲击 3.多次小冲击 4.利用网络所有权
+-- ====================================================================
+-- === 反防甩飞系统 ===
+-- ====================================================================
+-- 绕过对方的三层防御：
+-- 1. 绕过碰撞过滤：超近距离环绕，碰撞过滤对极近距离可能无效
+-- 2. 绕过锚定：延长攻击时间，锚定0.1秒后解除，继续攻击
+-- 3. 绕过CFrame回溯：在对方回溯后立即再次环绕
 
 createFeatureState("bypassAntiFling")
 
