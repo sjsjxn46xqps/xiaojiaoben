@@ -2451,9 +2451,24 @@ local function executeOrbitFling(targetPlayer, orbitSpeed, orbitRadius, duration
     -- 保存原始状态
     local originalCFrame = myHRP.CFrame
     local originalAutoRotate = myHum.AutoRotate
+    local originalAnchored = myHRP.Anchored
 
-    -- 禁用自动旋转，防止干扰环绕
+    -- === 关键修复：锚定自己的HRP ===
+    -- 环绕甩飞时，物理排斥力会同时作用于双方
+    -- 如果不锚定自己，自己会被弹飞而目标没事
+    -- 锚定后，物理引擎无法移动锚定物体，所有排斥力只作用于目标
+    -- 锚定的物体仍然可以通过CFrame移动（瞬移不受影响）
+    myHRP.Anchored = true
     myHum.AutoRotate = false
+
+    -- 同时锚定自己角色的所有部件，防止被物理力推动
+    local myAnchoredParts = {}
+    for _, part in ipairs(myChar:GetDescendants()) do
+        if part:IsA("BasePart") and not part.Anchored then
+            part.Anchored = true
+            myAnchoredParts[#myAnchoredParts + 1] = part
+        end
+    end
 
     -- 如果需要绕过防甩飞，调整参数
     local actualRadius = orbitRadius
@@ -2462,25 +2477,18 @@ local function executeOrbitFling(targetPlayer, orbitSpeed, orbitRadius, duration
 
     if useBypass and flingState.bypassEnabled then
         if flingState.bypassMode == 1 then
-            -- 模式1：超近环绕 - 减小半径到极小，增加物理挤压效果
-            -- 防甩飞的碰撞过滤可能对极近距离无效
             actualRadius = 0.5
             actualSpeed = orbitSpeed * 2
             actualDuration = duration * 1.5
         elseif flingState.bypassMode == 2 then
-            -- 模式2：多角度冲击 - 从多个角度交替环绕
-            -- 防甩飞的锚定可能只持续0.1秒，我们延长攻击时间
             actualRadius = orbitRadius
             actualSpeed = orbitSpeed * 3
             actualDuration = duration * 2
         elseif flingState.bypassMode == 3 then
-            -- 模式3：持续挤压 - 极长时间环绕，耗尽对方的锚定防御
-            -- 防甩飞锚定0.1秒后解除，我们持续攻击
             actualRadius = 1
             actualSpeed = orbitSpeed * 1.5
             actualDuration = duration * 4
         elseif flingState.bypassMode == 4 then
-            -- 模式4：网络所有权夺取 - 先夺取所有权再甩
             actualRadius = 0.3
             actualSpeed = orbitSpeed * 4
             actualDuration = duration * 1.5
@@ -2490,38 +2498,35 @@ local function executeOrbitFling(targetPlayer, orbitSpeed, orbitRadius, duration
     pcall(function()
         local angle = 0
         local startTime = tick()
-        local runService = RunService
 
         -- 环绕甩飞主循环
-        -- 每帧将角色瞬移到目标周围的轨道点上
         while tick() - startTime < actualDuration do
-            -- 检查目标是否还存在
             if not targetHRP or not targetHRP.Parent then break end
             if not myHRP or not myHRP.Parent then break end
 
-            -- 计算当前环绕角度位置
             angle = angle + actualSpeed
 
-            -- 获取目标当前位置（目标可能正在移动）
             local targetPos = targetHRP.Position
 
             -- 计算环绕位置
-            -- 使用正弦和余弦计算圆形轨道上的点
             local offsetX = math.cos(math.rad(angle)) * actualRadius
             local offsetZ = math.sin(math.rad(angle)) * actualRadius
-            -- 添加上下波动，增加挤压效果
             local offsetY = math.sin(math.rad(angle * 3)) * 0.5
 
-            -- 瞬移到环绕位置
             local orbitPos = targetPos + Vector3.new(offsetX, offsetY, offsetZ)
             myHRP.CFrame = CFrame.new(orbitPos, targetPos)
 
-            -- 等待下一帧（RenderStepped确保每帧执行一次）
-            runService.RenderStepped:Wait()
+            -- 每帧清除自己的速度（双重保险）
+            pcall(function()
+                myHRP.Velocity = Vector3.new(0, 0, 0)
+                myHRP.AssemblyLinearVelocity = Vector3.new(0, 0, 0)
+                myHRP.AssemblyAngularVelocity = Vector3.new(0, 0, 0)
+            end)
+
+            RunService.RenderStepped:Wait()
         end
 
         -- === 甩飞结束后的额外推力 ===
-        -- 环绕已经产生了排斥力，但我们可以额外施加一个推力确保目标飞得更远
         if targetHRP and targetHRP.Parent then
             local flingDir = (targetHRP.Position - myHRP.Position).Unit
             local extraBv = Instance.new("BodyVelocity")
@@ -2545,8 +2550,22 @@ local function executeOrbitFling(targetPlayer, orbitSpeed, orbitRadius, duration
             pcall(function() extraBf:Destroy() end)
         end
 
-        -- 恢复原始状态
+        -- === 恢复原始状态 ===
+        -- 先恢复位置
         myHRP.CFrame = originalCFrame
+        -- 清除速度
+        pcall(function()
+            myHRP.Velocity = Vector3.new(0, 0, 0)
+            myHRP.AssemblyLinearVelocity = Vector3.new(0, 0, 0)
+            myHRP.AssemblyAngularVelocity = Vector3.new(0, 0, 0)
+        end)
+        -- 解除锚定
+        for _, part in ipairs(myAnchoredParts) do
+            if part and part.Parent then
+                pcall(function() part.Anchored = false end)
+            end
+        end
+        myHRP.Anchored = originalAnchored
         myHum.AutoRotate = originalAutoRotate
     end)
 
