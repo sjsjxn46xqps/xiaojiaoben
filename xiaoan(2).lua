@@ -2385,7 +2385,7 @@ end})
 -- === 甩飞核心变量 ===
 local flingState = {
     enabled = false,
-    power = 500,           -- 甩飞力度（速度值）
+    power = 50000,         -- 甩飞力度（速度值）- 极高值才能甩飞很远
     range = 30,            -- 甩飞范围
     mode = 1,              -- 1=范围内全部, 2=最近目标, 3=指定目标
     targetPlayer = nil,    -- 指定目标玩家名
@@ -2426,7 +2426,7 @@ local FLING_DISGUISE = {
 }
 
 -- === 甩飞核心函数 ===
--- 对单个目标执行甩飞
+-- 对单个目标执行甩飞 - 极远距离版本
 local function executeFlingOnTarget(targetPlayer, power, useBypass)
     if not targetPlayer or targetPlayer == player then return false end
     if not targetPlayer.Character then return false end
@@ -2440,143 +2440,130 @@ local function executeFlingOnTarget(targetPlayer, power, useBypass)
     -- 计算甩飞方向：从我到目标的方向
     local direction = (targetHRP.Position - myHRP.Position).Unit
 
-    -- 添加一些随机偏移，使每次甩飞方向略有不同
+    -- 添加随机偏移，使每次甩飞方向略有不同
     local randomOffset = Vector3.new(
-        (math.random() - 0.5) * 0.3,
-        math.random() * 0.5 + 0.3,  -- 向上偏移
-        (math.random() - 0.5) * 0.3
+        (math.random() - 0.5) * 0.2,
+        0.3 + math.random() * 0.4,  -- 向上偏移，让目标飞得更高更远
+        (math.random() - 0.5) * 0.2
     )
     local flingDirection = (direction + randomOffset).Unit
-
-    -- 计算甩飞速度
-    local flingVelocity = flingDirection * power
 
     -- 检查是否需要绕过防甩飞
     if useBypass and flingState.bypassEnabled then
         -- === 反防甩飞模式 ===
         if flingState.bypassMode == 1 then
             -- 模式1：强制位移 - 直接设置CFrame，绕过物理系统
-            -- 防甩飞通常监控物理力，直接设置CFrame可以绕过
             pcall(function()
-                local targetPos = targetHRP.Position + flingDirection * power * 0.5
-                -- 分段移动，避免位置突变被检测
-                local steps = 5
-                local startPos = targetHRP.Position
-                for i = 1, steps do
-                    local alpha = i / steps
-                    -- 使用缓动函数让移动更自然
-                    local easedAlpha = 1 - math.pow(1 - alpha, 3) -- easeOutCubic
-                    local newPos = startPos:Lerp(targetPos, easedAlpha)
-                    targetHRP.CFrame = CFrame.new(newPos)
-                    task.wait(0.02)
-                end
+                -- 直接将目标传送到极远位置
+                local targetPos = targetHRP.Position + flingDirection * power
+                targetHRP.CFrame = CFrame.new(targetPos)
             end)
             return true
 
         elseif flingState.bypassMode == 2 then
-            -- 模式2：高速冲击 - 用极高速度的BodyVelocity瞬间冲击
-            -- 防甩飞可能只监控低频率的力，高速瞬间冲击可能绕过
+            -- 模式2：高速冲击 - 靠近目标后用极高速度冲击
             pcall(function()
-                -- 先靠近目标
                 local originalCFrame = myHRP.CFrame
-                local approachPos = targetHRP.Position - direction * 3
-                myHRP.CFrame = CFrame.new(approachPos)
-
+                -- 传送到目标身边
+                myHRP.CFrame = CFrame.new(targetHRP.Position - direction * 3)
                 task.wait(0.05)
 
-                -- 创建伪装的BodyVelocity
+                -- 极高速度BodyVelocity
                 local bv = Instance.new("BodyVelocity")
                 bv.Name = FLING_DISGUISE.bodyVelocity
                 bv.MaxForce = Vector3.new(math.huge, math.huge, math.huge)
-                bv.Velocity = flingVelocity * 2  -- 双倍速度
+                bv.Velocity = flingDirection * power * 3
                 bv.Parent = targetHRP
 
-                -- 同时给自己一个反向力（模拟碰撞）
+                -- 极强BodyForce
+                local bf = Instance.new("BodyForce")
+                bf.Name = FLING_DISGUISE.bodyForce
+                bf.Force = flingDirection * power * 5000 + Vector3.new(
+                    (math.random() - 0.5) * power * 2000,
+                    power * 3000,
+                    (math.random() - 0.5) * power * 2000
+                )
+                bf.Parent = targetHRP
+
+                -- 反冲
                 local myBv = Instance.new("BodyVelocity")
                 myBv.Name = FLING_DISGUISE.bodyVelocity
                 myBv.MaxForce = Vector3.new(math.huge, math.huge, math.huge)
-                myBv.Velocity = -flingDirection * 20
+                myBv.Velocity = -flingDirection * 30
                 myBv.Parent = myHRP
 
-                task.wait(0.15)
+                task.wait(0.25)
 
-                -- 清理
                 pcall(function() bv:Destroy() end)
+                pcall(function() bf:Destroy() end)
                 pcall(function() myBv:Destroy() end)
-
-                -- 恢复位置
                 myHRP.CFrame = originalCFrame
             end)
             return true
 
         elseif flingState.bypassMode == 3 then
-            -- 模式3：连续冲击 - 多次小力冲击，累积效果
-            -- 防甩飞可能只拦截单次大力，多次小力可能绕过
+            -- 模式3：连续冲击 - 多次极高速度冲击
             pcall(function()
                 local originalCFrame = myHRP.CFrame
-                for hit = 1, 8 do
-                    -- 每次靠近目标然后施加小力
-                    local approachPos = targetHRP.Position - direction * 2
-                    myHRP.CFrame = CFrame.new(approachPos)
-
-                    task.wait(0.03)
+                for hit = 1, 10 do
+                    myHRP.CFrame = CFrame.new(targetHRP.Position - direction * 2)
+                    task.wait(0.02)
 
                     local bv = Instance.new("BodyVelocity")
                     bv.Name = FLING_DISGUISE.bodyVelocity
                     bv.MaxForce = Vector3.new(math.huge, math.huge, math.huge)
-                    bv.Velocity = flingDirection * (power * 0.4)  -- 每次小力
+                    bv.Velocity = flingDirection * power * 2
                     bv.Parent = targetHRP
 
-                    task.wait(0.05)
+                    local bf = Instance.new("BodyForce")
+                    bf.Name = FLING_DISGUISE.bodyForce
+                    bf.Force = flingDirection * power * 3000
+                    bf.Parent = targetHRP
+
+                    task.wait(0.06)
 
                     pcall(function() bv:Destroy() end)
+                    pcall(function() bf:Destroy() end)
                 end
-                -- 恢复位置
                 myHRP.CFrame = originalCFrame
             end)
             return true
 
         elseif flingState.bypassMode == 4 then
-            -- 模式4：漏洞利用 - 利用网络所有权漏洞
-            -- 通过快速移动自己的角色来获得对目标的网络所有权
-            -- 然后修改目标位置
+            -- 模式4：漏洞利用 - 获取网络所有权后直接传送
             pcall(function()
                 local originalCFrame = myHRP.CFrame
 
-                -- 快速移向目标以获取网络所有权
-                for i = 1, 3 do
-                    myHRP.CFrame = CFrame.new(targetHRP.Position + Vector3.new(0, 2, 0))
+                -- 快速靠近获取网络所有权
+                for i = 1, 5 do
+                    myHRP.CFrame = CFrame.new(targetHRP.Position + Vector3.new(0, 3, 0))
                     task.wait(0.01)
-                    myHRP.CFrame = CFrame.new(targetHRP.Position - direction * 1.5)
+                    myHRP.CFrame = CFrame.new(targetHRP.Position - direction * 1)
                     task.wait(0.01)
                 end
 
-                -- 现在应该有网络所有权了，直接设置目标位置
-                task.wait(0.05)
+                task.wait(0.03)
 
-                -- 使用BodyPosition精确控制目标位置
-                local bp = Instance.new("BodyPosition")
-                bp.Name = FLING_DISGUISE.bodyPosition
-                bp.MaxForce = Vector3.new(math.huge, math.huge, math.huge)
-                bp.Position = targetHRP.Position + flingDirection * power * 0.8
-                bp.D = 1000  -- 高阻尼快速移动
-                bp.P = 50000 -- 高力量
-                bp.Parent = targetHRP
+                -- 直接设置目标到极远位置
+                local farPos = targetHRP.Position + flingDirection * power
+                targetHRP.CFrame = CFrame.new(farPos)
 
-                -- 同时用BodyVelocity加速
+                -- 同时施加极高速度确保飞出去
                 local bv = Instance.new("BodyVelocity")
                 bv.Name = FLING_DISGUISE.bodyVelocity
                 bv.MaxForce = Vector3.new(math.huge, math.huge, math.huge)
-                bv.Velocity = flingVelocity
+                bv.Velocity = flingDirection * power * 5
                 bv.Parent = targetHRP
+
+                local bf = Instance.new("BodyForce")
+                bf.Name = FLING_DISGUISE.bodyForce
+                bf.Force = flingDirection * power * 10000
+                bf.Parent = targetHRP
 
                 task.wait(0.3)
 
-                -- 清理
-                pcall(function() bp:Destroy() end)
                 pcall(function() bv:Destroy() end)
-
-                -- 恢复位置
+                pcall(function() bf:Destroy() end)
                 myHRP.CFrame = originalCFrame
             end)
             return true
@@ -2586,45 +2573,43 @@ local function executeFlingOnTarget(targetPlayer, power, useBypass)
         pcall(function()
             local originalCFrame = myHRP.CFrame
 
-            -- 方法：靠近目标，然后施加BodyVelocity
-            -- 这是Roblox中最经典的甩飞方法
-            local approachPos = targetHRP.Position - direction * 2
-            myHRP.CFrame = CFrame.new(approachPos)
-
+            -- 传送到目标身边
+            myHRP.CFrame = CFrame.new(targetHRP.Position - direction * 2)
             task.wait(0.05)
 
-            -- 创建BodyVelocity
+            -- 极高速度BodyVelocity
             local bv = Instance.new("BodyVelocity")
             bv.Name = FLING_DISGUISE.bodyVelocity
             bv.MaxForce = Vector3.new(math.huge, math.huge, math.huge)
-            bv.Velocity = flingVelocity
+            bv.Velocity = flingDirection * power
             bv.Parent = targetHRP
 
-            -- 创建BodyForce增加旋转效果
+            -- 极强BodyForce增加旋转和额外推力
             local bf = Instance.new("BodyForce")
             bf.Name = FLING_DISGUISE.bodyForce
-            bf.Force = flingDirection * power * 50 + Vector3.new(
-                (math.random() - 0.5) * power * 30,
-                power * 20,
-                (math.random() - 0.5) * power * 30
+            bf.Force = flingDirection * power * 5000 + Vector3.new(
+                (math.random() - 0.5) * power * 3000,
+                power * 4000,
+                (math.random() - 0.5) * power * 3000
             )
             bf.Parent = targetHRP
 
-            -- 给自己一个反冲力，看起来像碰撞
+            -- 反冲力
             local myBv = Instance.new("BodyVelocity")
             myBv.Name = FLING_DISGUISE.bodyVelocity
             myBv.MaxForce = Vector3.new(math.huge, math.huge, math.huge)
-            myBv.Velocity = -flingDirection * 15
+            myBv.Velocity = -flingDirection * 20
             myBv.Parent = myHRP
 
-            task.wait(0.2)
+            -- 等待更长时间让力生效
+            task.wait(0.3)
 
-            -- 清理所有物理实例（反作弊保护：不留痕迹）
+            -- 清理所有物理实例
             pcall(function() bv:Destroy() end)
             pcall(function() bf:Destroy() end)
             pcall(function() myBv:Destroy() end)
 
-            -- 恢复自己的位置
+            -- 恢复位置
             task.wait(0.05)
             myHRP.CFrame = originalCFrame
         end)
@@ -2650,7 +2635,7 @@ CreateFeature("fling", "Toggle", "combat", {onToggle=function(state)
     end
 end})
 
-CreateFeature("flingPower", "Slider", "combat", {default=500, min=100, max=2000, onChange=function(v)
+CreateFeature("flingPower", "Slider", "combat", {default=50000, min=10000, max=500000, onChange=function(v)
     flingState.power = v
 end})
 
