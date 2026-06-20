@@ -1,5 +1,5 @@
 --[[
-    X-Style Dev Backdoor v7.4 (Precise AC Bypass + Fixed Game Functions)
+    X-Style Dev Backdoor v7.5 (Music Player + Floating Window + Precise AC Bypass)
     Key: xa3765360431
     - 27-layer anti-cheat bypass system (always on)
     - Advanced aimbot with prediction, FOV, priority, keybind, sticky aim, etc.
@@ -15,6 +15,14 @@
 -- ==================== GitHub 图片链接 ====================
 local ICON_URL = "https://raw.githubusercontent.com/sjsjxn46xqps/xiaojiaoben/refs/heads/main/XA%E5%9B%BE%E6%A0%87.png"
 local BACKGROUND_URL = "https://raw.githubusercontent.com/sjsjxn46xqps/xiaojiaoben/refs/heads/main/XA%E8%8F%9C%E5%8D%95%E8%83%8C%E6%99%AF.png"
+
+-- 音乐URL
+local MUSIC_BASE_URL = "https://raw.githubusercontent.com/sjsjxn46xqps/xiaojiaoben/refs/heads/main/"
+local MUSIC_LIST = {
+    {name = "NIGHT DANCER", file = "NIGHT DANCER.mp3"},
+    {name = "Summer express", file = "Summer express.mp3"},
+    {name = "UNICUBE!", file = "UNICUBE!.mp3"},
+}
 
 -- ==================== Services ====================
 local Players = game:GetService("Players")
@@ -137,6 +145,19 @@ local L = {
     airWalk = {zh="空中行走", en="Air Walk"},
     spinBot = {zh="旋转机器人", en="Spin Bot"},
     spinSpeed = {zh="旋转速度", en="Spin Speed"},
+    -- 音乐
+    music = {zh="音乐", en="Music"},
+    musicPlay = {zh="播放", en="Play"},
+    musicPause = {zh="暂停", en="Pause"},
+    musicStop = {zh="停止", en="Stop"},
+    musicVolume = {zh="音量", en="Volume"},
+    musicTime = {zh="播放位置", en="Position"},
+    musicLoading = {zh="加载中...", en="Loading..."},
+    musicLoaded = {zh="已加载", en="Loaded"},
+    musicNowPlaying = {zh="正在播放", en="Now Playing"},
+    -- 悬浮窗
+    floatWin = {zh="悬浮窗", en="Float"},
+    floatWinRemove = {zh="移除悬浮窗", en="Remove Float"},
 }
 local function T(key) return L[key] and L[key][Lang] or key end
 
@@ -617,18 +638,18 @@ TabBar.BackgroundColor3 = Color3.fromRGB(0,0,0); TabBar.BackgroundTransparency =
 TabBar.BorderSizePixel = 0; TabBar.ZIndex = 2; TabBar.Parent = MainFrame
 
 local TabIndicator = Instance.new("Frame")
-TabIndicator.Size = UDim2.new(0.24,0,0,3); TabIndicator.Position = UDim2.new(0.005,0,1,-3)
+TabIndicator.Size = UDim2.new(0.19,0,0,3); TabIndicator.Position = UDim2.new(0.005,0,1,-3)
 TabIndicator.BackgroundColor3 = Color3.fromRGB(29,155,240); TabIndicator.BorderSizePixel = 0
 TabIndicator.ZIndex = 3; TabIndicator.Parent = TabBar
 
-local tabs = {"movement","combat","world","aimbot"}
+local tabs = {"movement","combat","world","aimbot","music"}
 local curTab = "movement"
 local tabBtns = {}
 for i, tab in ipairs(tabs) do
-    local b = Instance.new("TextButton"); b.Text = T(tab); b.Font = Enum.Font.GothamMedium; b.TextSize = 12
+    local b = Instance.new("TextButton"); b.Text = T(tab); b.Font = Enum.Font.GothamMedium; b.TextSize = 11
     b.TextColor3 = i==1 and Color3.fromRGB(255,255,255) or Color3.fromRGB(180,185,190)
-    b.BackgroundTransparency = 1; b.Size = UDim2.new(1/4,-8,1,0)
-    b.Position = UDim2.new((i-1)/4,4,0,0); b.BorderSizePixel = 0; b.ZIndex = 3; b.Parent = TabBar
+    b.BackgroundTransparency = 1; b.Size = UDim2.new(1/5,-6,1,0)
+    b.Position = UDim2.new((i-1)/5,3,0,0); b.BorderSizePixel = 0; b.ZIndex = 3; b.Parent = TabBar
     tabBtns[tab] = b
 end
 
@@ -650,7 +671,7 @@ end
 
 local function switchTab(t)
     curTab = t; local idx = table.find(tabs, t)
-    tween(TabIndicator, {Position = UDim2.new((idx-1)/4+0.005,0,1,-3)}, 0.3, Enum.EasingStyle.Quart)
+    tween(TabIndicator, {Position = UDim2.new((idx-1)/5+0.005,0,1,-3)}, 0.3, Enum.EasingStyle.Quart)
     for tn, btn in pairs(tabBtns) do
         tween(btn, {TextColor3 = tn==t and Color3.fromRGB(255,255,255) or Color3.fromRGB(180,185,190)}, 0.2)
     end
@@ -663,6 +684,7 @@ for tn, btn in pairs(tabBtns) do btn.MouseButton1Click:Connect(function() switch
 
 -- ==================== FEATURE BUILDER ====================
 local allFeatures = {}
+local allFeaturesByKey = {}
 
 local function CreateFeature(name, type, pageName, opt)
     opt = opt or {}
@@ -767,7 +789,7 @@ local function CreateFeature(name, type, pageName, opt)
             if opt.onClick then opt.onClick() end; notif(T(name).." "..T("executed"))
         end)
     end
-    table.insert(allFeatures, feat); container.CanvasSize = UDim2.new(0,0,0, list.AbsoluteContentSize.Y+32)
+    table.insert(allFeatures, feat); allFeaturesByKey[name] = feat; container.CanvasSize = UDim2.new(0,0,0, list.AbsoluteContentSize.Y+32)
     return feat
 end
 
@@ -2331,6 +2353,513 @@ CreateFeature("spinSpeed", "Slider", "movement", {default=10, min=1, max=50, onC
     spinSpeed = v
 end})
 
+-- ####################################################################
+-- ==================== MUSIC PLAYER SYSTEM ========================== --
+-- ####################################################################
+
+-- 音频加载函数（与图片加载类似，使用 writefile + getcustomasset）
+local function tryLoadAudio(url, filename)
+    local success, data = pcall(function()
+        return game:HttpGet(url)
+    end)
+    if success and data and #data > 0 then
+        pcall(function()
+            writefile(filename, data)
+        end)
+        local assetSuccess, assetId = pcall(function()
+            return getcustomasset(filename)
+        end)
+        if assetSuccess and assetId then
+            return assetId
+        end
+    end
+    return nil
+end
+
+-- 音乐状态
+local musicState = {
+    currentSound = nil,       -- 当前播放的Sound对象
+    currentTrack = nil,       -- 当前曲目索引
+    isPlaying = false,
+    isPaused = false,
+    volume = 50,              -- 0-100
+    loadedAssets = {},        -- 缓存已加载的音频ID
+    loading = false,
+}
+
+-- 创建音乐播放器Sound对象
+local musicContainer = Instance.new("Folder")
+musicContainer.Name = "CameraEffects" -- 伪装名称
+musicContainer.Parent = Camera
+
+local musicSound = Instance.new("Sound")
+musicSound.Name = "AmbientSound" -- 伪装名称
+musicSound.Volume = 0.5
+musicSound.Parent = musicContainer
+
+musicState.currentSound = musicSound
+
+-- 预加载所有音乐
+task.spawn(function()
+    for i, track in ipairs(MUSIC_LIST) do
+        if not musicState.loadedAssets[i] then
+            local url = MUSIC_BASE_URL .. track.file
+            local filename = "XA_Music_" .. i .. ".mp3"
+            local assetId = tryLoadAudio(url, filename)
+            if assetId then
+                musicState.loadedAssets[i] = assetId
+            end
+        end
+    end
+end)
+
+-- 音乐播放器UI
+local musicPage = pages["music"]
+local mpFrame = musicPage.frame
+local mpList = musicPage.list
+
+-- 当前播放信息
+local nowPlayingLabel = nil
+local timeSliderFrame = nil
+local timeFill = nil
+local timeKnob = nil
+local timeValLabel = nil
+local timeDragging = false
+
+-- 创建音乐播放器界面
+do
+    -- 当前播放状态显示
+    local statusFrame = Instance.new("Frame")
+    statusFrame.Size = UDim2.new(1,-20,0,60)
+    statusFrame.BackgroundColor3 = Color3.fromRGB(22,24,28); statusFrame.BackgroundTransparency = 0.4
+    statusFrame.BorderSizePixel = 0; statusFrame.ZIndex = 1; statusFrame.Parent = mpFrame
+    local statusCorner = Instance.new("UICorner"); statusCorner.CornerRadius = UDim.new(0,12); statusCorner.Parent = statusFrame
+
+    nowPlayingLabel = Instance.new("TextLabel")
+    nowPlayingLabel.Text = T("music") .. " - " .. T("off")
+    nowPlayingLabel.Font = Enum.Font.GothamBold; nowPlayingLabel.TextSize = 14
+    nowPlayingLabel.TextColor3 = Color3.fromRGB(29,155,240); nowPlayingLabel.BackgroundTransparency = 1
+    nowPlayingLabel.Size = UDim2.new(1,-24,0,20); nowPlayingLabel.Position = UDim2.new(0,12,0,8)
+    nowPlayingLabel.TextXAlignment = Enum.TextXAlignment.Left; nowPlayingLabel.ZIndex = 2; nowPlayingLabel.Parent = statusFrame
+
+    local statusSub = Instance.new("TextLabel")
+    statusSub.Text = "0:00 / 0:00"
+    statusSub.Font = Enum.Font.GothamMedium; statusSub.TextSize = 11
+    statusSub.TextColor3 = Color3.fromRGB(150,150,150); statusSub.BackgroundTransparency = 1
+    statusSub.Name = "TimeDisplay"
+    statusSub.Size = UDim2.new(1,-24,0,16); statusSub.Position = UDim2.new(0,12,0,32)
+    statusSub.TextXAlignment = Enum.TextXAlignment.Left; statusSub.ZIndex = 2; statusSub.Parent = statusFrame
+
+    -- 播放位置滑块
+    timeSliderFrame = Instance.new("Frame")
+    timeSliderFrame.Size = UDim2.new(1,-20,0,42)
+    timeSliderFrame.BackgroundColor3 = Color3.fromRGB(22,24,28); timeSliderFrame.BackgroundTransparency = 0.4
+    timeSliderFrame.BorderSizePixel = 0; timeSliderFrame.ZIndex = 1; timeSliderFrame.Parent = mpFrame
+    local tsCorner = Instance.new("UICorner"); tsCorner.CornerRadius = UDim.new(0,12); tsCorner.Parent = timeSliderFrame
+
+    local tsLabel = Instance.new("TextLabel"); tsLabel.Text = T("musicTime")
+    tsLabel.Font = Enum.Font.GothamMedium; tsLabel.TextSize = 13
+    tsLabel.TextColor3 = Color3.fromRGB(240,240,240); tsLabel.BackgroundTransparency = 1
+    tsLabel.Size = UDim2.new(0,80,1,0); tsLabel.Position = UDim2.new(0,12,0,0)
+    tsLabel.TextXAlignment = Enum.TextXAlignment.Left; tsLabel.ZIndex = 2; tsLabel.Parent = timeSliderFrame
+
+    timeValLabel = Instance.new("TextLabel"); timeValLabel.Text = "0:00"
+    timeValLabel.Font = Enum.Font.GothamMedium; timeValLabel.TextSize = 12
+    timeValLabel.TextColor3 = Color3.fromRGB(200,200,200); timeValLabel.BackgroundTransparency = 1
+    timeValLabel.Size = UDim2.new(0,36,1,0); timeValLabel.Position = UDim2.new(1,-44,0,0); timeValLabel.ZIndex = 2; timeValLabel.Parent = timeSliderFrame
+
+    local tsTrack = Instance.new("Frame"); tsTrack.Size = UDim2.new(0,100,0,5); tsTrack.Position = UDim2.new(1,-160,0.5,-2.5)
+    tsTrack.BackgroundColor3 = Color3.fromRGB(50,50,50); tsTrack.BorderSizePixel = 0; tsTrack.ZIndex = 2; tsTrack.Parent = timeSliderFrame
+    local tsTrackCorner = Instance.new("UICorner"); tsTrackCorner.CornerRadius = UDim.new(0,3); tsTrackCorner.Parent = tsTrack
+
+    timeFill = Instance.new("Frame"); timeFill.Size = UDim2.new(0,0,1,0)
+    timeFill.BackgroundColor3 = Color3.fromRGB(29,155,240); timeFill.BorderSizePixel = 0; timeFill.ZIndex = 2; timeFill.Parent = tsTrack
+    local timeFillCorner = Instance.new("UICorner"); timeFillCorner.CornerRadius = UDim.new(0,3); timeFillCorner.Parent = timeFill
+
+    timeKnob = Instance.new("TextButton"); timeKnob.Size = UDim2.new(0,14,0,14)
+    timeKnob.Position = UDim2.new(0,-7,0.5,-7); timeKnob.BackgroundColor3 = Color3.fromRGB(255,255,255)
+    timeKnob.Text = ""; timeKnob.BorderSizePixel = 0; timeKnob.AutoButtonColor = false; timeKnob.ZIndex = 3; timeKnob.Parent = tsTrack
+    local timeKnobCorner = Instance.new("UICorner"); timeKnobCorner.CornerRadius = UDim.new(0,9); timeKnobCorner.Parent = timeKnob
+
+    -- 时间滑块拖动
+    local function updateTimeSlider(pos)
+        if not musicSound.IsLoaded then return end
+        local len = musicSound.TimeLength
+        if len <= 0 then return end
+        local rel = math.clamp((pos.X - tsTrack.AbsolutePosition.X) / tsTrack.AbsoluteSize.X, 0, 1)
+        musicSound.TimePosition = rel * len
+        timeFill.Size = UDim2.new(rel, 0, 1, 0)
+        timeKnob.Position = UDim2.new(rel, -7, 0.5, -7)
+    end
+    timeKnob.MouseButton1Down:Connect(function() timeDragging = true end)
+    tsTrack.InputBegan:Connect(function(inp)
+        if inp.UserInputType == Enum.UserInputType.MouseButton1 or inp.UserInputType == Enum.UserInputType.Touch then
+            timeDragging = true; updateTimeSlider(inp.Position)
+        end
+    end)
+    UserInputService.InputEnded:Connect(function(inp)
+        if inp.UserInputType == Enum.UserInputType.MouseButton1 or inp.UserInputType == Enum.UserInputType.Touch then timeDragging = false end
+    end)
+    UserInputService.InputChanged:Connect(function(inp)
+        if timeDragging and (inp.UserInputType == Enum.UserInputType.MouseMovement or inp.UserInputType == Enum.UserInputType.Touch) then
+            updateTimeSlider(inp.Position)
+        end
+    end)
+
+    -- 音量滑块
+    CreateFeature("musicVolume", "Slider", "music", {default=50, min=0, max=100, onChange=function(v)
+        musicState.volume = v
+        musicSound.Volume = v / 100
+    end})
+
+    -- 音乐曲目列表
+    for i, track in ipairs(MUSIC_LIST) do
+        local trackFrame = Instance.new("Frame")
+        trackFrame.Size = UDim2.new(1,-20,0,50)
+        trackFrame.BackgroundColor3 = Color3.fromRGB(22,24,28); trackFrame.BackgroundTransparency = 0.4
+        trackFrame.BorderSizePixel = 0; trackFrame.ZIndex = 1; trackFrame.Parent = mpFrame
+        local trackCorner = Instance.new("UICorner"); trackCorner.CornerRadius = UDim.new(0,12); trackCorner.Parent = trackFrame
+
+        local trackLabel = Instance.new("TextLabel"); trackLabel.Text = track.name
+        trackLabel.Font = Enum.Font.GothamMedium; trackLabel.TextSize = 13
+        trackLabel.TextColor3 = Color3.fromRGB(240,240,240); trackLabel.BackgroundTransparency = 1
+        trackLabel.Size = UDim2.new(0,150,1,0); trackLabel.Position = UDim2.new(0,12,0,0)
+        trackLabel.TextXAlignment = Enum.TextXAlignment.Left; trackLabel.ZIndex = 2; trackLabel.Parent = trackFrame
+
+        -- 播放/暂停按钮
+        local playBtn = Instance.new("TextButton"); playBtn.Text = T("musicPlay")
+        playBtn.Font = Enum.Font.GothamBold; playBtn.TextSize = 10
+        playBtn.TextColor3 = Color3.fromRGB(255,255,255); playBtn.BackgroundColor3 = Color3.fromRGB(29,155,240)
+        playBtn.Size = UDim2.new(0,44,0,24); playBtn.Position = UDim2.new(1,-100,0.5,-12)
+        playBtn.BorderSizePixel = 0; playBtn.AutoButtonColor = false; playBtn.ZIndex = 2; playBtn.Parent = trackFrame
+        local playBtnCorner = Instance.new("UICorner"); playBtnCorner.CornerRadius = UDim.new(0,12); playBtnCorner.Parent = playBtn
+
+        -- 停止按钮
+        local stopBtn = Instance.new("TextButton"); stopBtn.Text = T("musicStop")
+        stopBtn.Font = Enum.Font.GothamBold; stopBtn.TextSize = 10
+        stopBtn.TextColor3 = Color3.fromRGB(255,255,255); stopBtn.BackgroundColor3 = Color3.fromRGB(200,50,50)
+        stopBtn.Size = UDim2.new(0,44,0,24); stopBtn.Position = UDim2.new(1,-50,0.5,-12)
+        stopBtn.BorderSizePixel = 0; stopBtn.AutoButtonColor = false; stopBtn.ZIndex = 2; stopBtn.Parent = trackFrame
+        local stopBtnCorner = Instance.new("UICorner"); stopBtnCorner.CornerRadius = UDim.new(0,12); stopBtnCorner.Parent = stopBtn
+
+        -- 播放/暂停逻辑
+        playBtn.MouseButton1Click:Connect(function()
+            if musicState.currentTrack == i and musicState.isPlaying then
+                -- 暂停
+                musicSound:Pause()
+                musicState.isPaused = true
+                musicState.isPlaying = false
+                playBtn.Text = T("musicPlay")
+                nowPlayingLabel.Text = track.name .. " - " .. T("musicPause")
+            else
+                -- 播放（如果还没加载，等待加载）
+                if not musicState.loadedAssets[i] then
+                    playBtn.Text = T("musicLoading")
+                    task.spawn(function()
+                        local url = MUSIC_BASE_URL .. track.file
+                        local filename = "XA_Music_" .. i .. ".mp3"
+                        local assetId = tryLoadAudio(url, filename)
+                        if assetId then
+                            musicState.loadedAssets[i] = assetId
+                            -- 播放
+                            musicSound.SoundId = assetId
+                            musicSound.Volume = musicState.volume / 100
+                            musicSound:Play()
+                            musicState.currentTrack = i
+                            musicState.isPlaying = true
+                            musicState.isPaused = false
+                            playBtn.Text = T("musicPause")
+                            nowPlayingLabel.Text = T("musicNowPlaying") .. ": " .. track.name
+                        else
+                            playBtn.Text = T("musicPlay")
+                            notif("Music load failed")
+                        end
+                    end)
+                else
+                    musicSound.SoundId = musicState.loadedAssets[i]
+                    musicSound.Volume = musicState.volume / 100
+                    if musicState.currentTrack == i and musicState.isPaused then
+                        musicSound:Resume()
+                    else
+                        musicSound:Play()
+                    end
+                    musicState.currentTrack = i
+                    musicState.isPlaying = true
+                    musicState.isPaused = false
+                    playBtn.Text = T("musicPause")
+                    nowPlayingLabel.Text = T("musicNowPlaying") .. ": " .. track.name
+                end
+            end
+        end)
+
+        -- 停止逻辑
+        stopBtn.MouseButton1Click:Connect(function()
+            if musicState.currentTrack == i then
+                musicSound:Stop()
+                musicState.isPlaying = false
+                musicState.isPaused = false
+                musicState.currentTrack = nil
+                playBtn.Text = T("musicPlay")
+                nowPlayingLabel.Text = T("music") .. " - " .. T("off")
+                timeFill.Size = UDim2.new(0, 0, 1, 0)
+                timeKnob.Position = UDim2.new(0, -7, 0.5, -7)
+            end
+        end)
+
+        -- 长按添加悬浮窗
+        local longPressTimer = nil
+        local longPressTriggered = false
+        trackFrame.InputBegan:Connect(function(inp)
+            if inp.UserInputType == Enum.UserInputType.MouseButton1 or inp.UserInputType == Enum.UserInputType.Touch then
+                longPressTriggered = false
+                longPressTimer = task.delay(0.8, function()
+                    longPressTriggered = true
+                    toggleFloatWindow("music_" .. i, track.name, true) -- music类型悬浮窗
+                end)
+            end
+        end)
+        trackFrame.InputEnded:Connect(function(inp)
+            if inp.UserInputType == Enum.UserInputType.MouseButton1 or inp.UserInputType == Enum.UserInputType.Touch then
+                if longPressTimer then task.cancel(longPressTimer); longPressTimer = nil end
+            end
+        end)
+    end
+
+    -- 更新时间滑块循环
+    task.spawn(function()
+        while true do
+            task.wait(0.1)
+            if musicState.isPlaying and musicSound.IsLoaded and not timeDragging then
+                local len = musicSound.TimeLength
+                local pos = musicSound.TimePosition
+                if len > 0 then
+                    local rel = pos / len
+                    timeFill.Size = UDim2.new(rel, 0, 1, 0)
+                    timeKnob.Position = UDim2.new(rel, -7, 0.5, -7)
+                    -- 更新时间显示
+                    local posMin = math.floor(pos / 60)
+                    local posSec = math.floor(pos % 60)
+                    local lenMin = math.floor(len / 60)
+                    local lenSec = math.floor(len % 60)
+                    local timeDisplay = statusFrame:FindFirstChild("TimeDisplay")
+                    if timeDisplay then
+                        timeDisplay.Text = posMin .. ":" .. string.format("%02d", posSec) .. " / " .. lenMin .. ":" .. string.format("%02d", lenSec)
+                    end
+                    timeValLabel.Text = posMin .. ":" .. string.format("%02d", posSec)
+                end
+            end
+            -- 播放结束检测
+            if musicState.isPlaying and musicSound.IsLoaded and not musicState.isPaused then
+                if musicSound.TimeLength > 0 and musicSound.TimePosition >= musicSound.TimeLength - 0.1 then
+                    musicState.isPlaying = false
+                    musicState.currentTrack = nil
+                    nowPlayingLabel.Text = T("music") .. " - " .. T("off")
+                    timeFill.Size = UDim2.new(0, 0, 1, 0)
+                    timeKnob.Position = UDim2.new(0, -7, 0.5, -7)
+                end
+            end
+        end
+    end)
+end
+
+-- ####################################################################
+-- ==================== FLOATING WINDOW SYSTEM ======================= --
+-- ####################################################################
+
+local floatWindows = {}       -- {key = {frame, label, state, isMusic, musicIndex}}
+local floatWinContainer = nil -- ScreenGui for float windows
+
+-- 创建悬浮窗容器
+floatWinContainer = Instance.new("ScreenGui")
+floatWinContainer.Name = FAKE_NAMES.ui
+floatWinContainer.ResetOnSpawn = false
+floatWinContainer.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+pcall(function() floatWinContainer.Parent = CoreGui end)
+if not floatWinContainer.Parent then
+    floatWinContainer.Parent = player:FindFirstChild("PlayerGui")
+end
+
+-- 悬浮窗初始位置
+local floatWinPositions = {}
+local function getNextFloatPos()
+    local count = 0
+    for _ in pairs(floatWinPositions) do count = count + 1 end
+    local row = math.floor(count / 3)
+    local col = count % 3
+    return UDim2.new(0, 10 + col * 70, 0.4, row * 60)
+end
+
+function toggleFloatWindow(key, displayName, isMusic, musicIndex)
+    if floatWindows[key] then
+        -- 已存在，移除悬浮窗
+        pcall(function() floatWindows[key].frame:Destroy() end)
+        floatWinPositions[key] = nil
+        floatWindows[key] = nil
+        notif(T("floatWinRemove") .. ": " .. displayName)
+        return
+    end
+
+    -- 创建悬浮窗
+    local pos = getNextFloatPos()
+    floatWinPositions[key] = pos
+
+    local fw = Instance.new("Frame")
+    fw.Size = UDim2.new(0, 60, 0, 50)
+    fw.Position = pos
+    fw.BackgroundColor3 = Color3.fromRGB(22, 24, 28); fw.BackgroundTransparency = 0.2
+    fw.BorderSizePixel = 0; fw.ZIndex = 100; fw.Parent = floatWinContainer
+    local fwCorner = Instance.new("UICorner"); fwCorner.CornerRadius = UDim.new(0, 10); fwCorner.Parent = fw
+    -- 边框
+    local fwStroke = Instance.new("UIStroke"); fwStroke.Color = Color3.fromRGB(29,155,240)
+    fwStroke.Thickness = 1.5; fwStroke.Transparency = 0.5; fwStroke.Parent = fw
+
+    local fwLabel = Instance.new("TextLabel")
+    fwLabel.Text = displayName
+    fwLabel.Font = Enum.Font.GothamBold; fwLabel.TextSize = 9
+    fwLabel.TextColor3 = Color3.fromRGB(240,240,240); fwLabel.BackgroundTransparency = 1
+    fwLabel.Size = UDim2.new(1, 0, 0, 20); fwLabel.Position = UDim2.new(0, 0, 0, 2)
+    fwLabel.ZIndex = 101; fwLabel.Parent = fw
+
+    local fwStateLabel = Instance.new("TextLabel")
+    fwStateLabel.Text = T("off")
+    fwStateLabel.Font = Enum.Font.GothamBold; fwStateLabel.TextSize = 11
+    fwStateLabel.TextColor3 = Color3.fromRGB(255,80,80); fwStateLabel.BackgroundTransparency = 1
+    fwStateLabel.Size = UDim2.new(1, 0, 0, 18); fwStateLabel.Position = UDim2.new(0, 0, 0, 22)
+    fwStateLabel.ZIndex = 101; fwStateLabel.Parent = fw
+
+    local fwStateVal = false
+
+    -- 点击切换状态
+    fw.InputBegan:Connect(function(inp)
+        if inp.UserInputType == Enum.UserInputType.MouseButton1 or inp.UserInputType == Enum.UserInputType.Touch then
+            fwStateVal = not fwStateVal
+            if isMusic then
+                -- 音乐悬浮窗：只能开关播放
+                if fwStateVal then
+                    -- 播放
+                    if musicState.loadedAssets[musicIndex] then
+                        musicSound.SoundId = musicState.loadedAssets[musicIndex]
+                        musicSound.Volume = musicState.volume / 100
+                        musicSound:Play()
+                        musicState.currentTrack = musicIndex
+                        musicState.isPlaying = true
+                        musicState.isPaused = false
+                    end
+                else
+                    -- 停止
+                    if musicState.currentTrack == musicIndex then
+                        musicSound:Stop()
+                        musicState.isPlaying = false
+                        musicState.isPaused = false
+                        musicState.currentTrack = nil
+                    end
+                end
+            else
+                -- 功能悬浮窗：切换功能开关
+                local feat = allFeaturesByKey and allFeaturesByKey[key]
+                if feat and feat.setState then
+                    feat.setState(fwStateVal)
+                end
+            end
+        end
+    end)
+
+    -- 长按移除悬浮窗
+    local fwLongPress = nil
+    fw.InputBegan:Connect(function(inp)
+        if inp.UserInputType == Enum.UserInputType.MouseButton1 or inp.UserInputType == Enum.UserInputType.Touch then
+            fwLongPress = task.delay(0.8, function()
+                toggleFloatWindow(key, displayName, isMusic, musicIndex)
+            end)
+        end
+    end)
+    fw.InputEnded:Connect(function(inp)
+        if inp.UserInputType == Enum.UserInputType.MouseButton1 or inp.UserInputType == Enum.UserInputType.Touch then
+            if fwLongPress then task.cancel(fwLongPress); fwLongPress = nil end
+        end
+    end)
+
+    -- 拖拽
+    local fwDrag = false; local fwDragStart; local fwStartPos
+    fw.InputBegan:Connect(function(inp)
+        if inp.UserInputType == Enum.UserInputType.MouseButton1 or inp.UserInputType == Enum.UserInputType.Touch then
+            fwDrag = true; fwDragStart = inp.Position; fwStartPos = fw.Position
+        end
+    end)
+    UserInputService.InputChanged:Connect(function(inp)
+        if fwDrag and (inp.UserInputType == Enum.UserInputType.MouseMovement or inp.UserInputType == Enum.UserInputType.Touch) then
+            local delta = inp.Position - fwDragStart
+            fw.Position = UDim2.new(fwStartPos.X.Scale, fwStartPos.X.Offset + delta.X, fwStartPos.Y.Scale, fwStartPos.Y.Offset + delta.Y)
+        end
+    end)
+    UserInputService.InputEnded:Connect(function(inp)
+        if inp.UserInputType == Enum.UserInputType.MouseButton1 or inp.UserInputType == Enum.UserInputType.Touch then
+            fwDrag = false
+        end
+    end)
+
+    floatWindows[key] = {frame = fw, stateLabel = fwStateLabel, isMusic = isMusic, musicIndex = musicIndex}
+    notif(T("floatWin") .. ": " .. displayName)
+end
+
+-- 为所有现有Toggle功能添加长按悬浮窗支持
+task.spawn(function()
+    task.wait(1) -- 等待UI创建完成
+    for _, feat in ipairs(allFeatures) do
+        if feat.type == "Toggle" and feat.frame then
+            local longPressTimer = nil
+            feat.frame.InputBegan:Connect(function(inp)
+                if inp.UserInputType == Enum.UserInputType.MouseButton1 or inp.UserInputType == Enum.UserInputType.Touch then
+                    longPressTimer = task.delay(0.8, function()
+                        toggleFloatWindow(feat.key, T(feat.key), false)
+                    end)
+                end
+            end)
+            feat.frame.InputEnded:Connect(function(inp)
+                if inp.UserInputType == Enum.UserInputType.MouseButton1 or inp.UserInputType == Enum.UserInputType.Touch then
+                    if longPressTimer then task.cancel(longPressTimer); longPressTimer = nil end
+                end
+            end)
+        end
+    end
+end)
+
+-- 悬浮窗状态同步循环
+task.spawn(function()
+    while true do
+        task.wait(0.3)
+        for key, fw in pairs(floatWindows) do
+            if fw.isMusic then
+                -- 音乐悬浮窗状态同步
+                local isThisPlaying = musicState.isPlaying and musicState.currentTrack == fw.musicIndex
+                if fw.stateLabel then
+                    fw.stateLabel.Text = isThisPlaying and T("on") or T("off")
+                    fw.stateLabel.TextColor3 = isThisPlaying and Color3.fromRGB(80,255,80) or Color3.fromRGB(255,80,80)
+                end
+                -- 更新边框颜色
+                local stroke = fw.frame:FindFirstChildOfClass("UIStroke")
+                if stroke then
+                    stroke.Color = isThisPlaying and Color3.fromRGB(80,255,80) or Color3.fromRGB(29,155,240)
+                end
+            else
+                -- 功能悬浮窗状态同步
+                local feat = allFeaturesByKey and allFeaturesByKey[key]
+                if feat and feat.getState then
+                    local st = feat.getState()
+                    if fw.stateLabel then
+                        fw.stateLabel.Text = st and T("on") or T("off")
+                        fw.stateLabel.TextColor3 = st and Color3.fromRGB(80,255,80) or Color3.fromRGB(255,80,80)
+                    end
+                    local stroke = fw.frame:FindFirstChildOfClass("UIStroke")
+                    if stroke then
+                        stroke.Color = st and Color3.fromRGB(80,255,80) or Color3.fromRGB(29,155,240)
+                    end
+                end
+            end
+        end
+    end
+end)
+
 -- ==================== Teleport Input ====================
 UserInputService.InputBegan:Connect(function(inp, gp)
     if gp or not active or not tpEnabled then return end
@@ -2456,4 +2985,4 @@ end)
 
 -- ==================== Init ====================
 switchTab("movement")
-print("[DevTool] XA Dev Backdoor v7.4 | Precise AC Bypass | Key: xa3765360431")
+print("[DevTool] XA Dev Backdoor v7.5 | Music + FloatWin | Key: xa3765360431")
